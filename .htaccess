@@ -1,0 +1,35 @@
+# /.htaccess — Plataforma EAD
+
+Options -Indexes
+ServerSignature Off
+
+# Redirecionar para index
+DirectoryIndex index.php
+
+# Proteção contra XSS e clickjacking
+<IfModule mod_headers.c>
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set X-XSS-Protection "1; mode=block"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
+
+# Bloquear acesso direto às pastas sensíveis
+<FilesMatch "\.(sql|log|env|md|sh|bak)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Bloquear listagem de diretórios
+<IfModule mod_autoindex.c>
+    Options -Indexes
+</IfModule>
+
+# PHP seguro
+<IfModule mod_php.c>
+    php_flag expose_php Off
+    php_flag display_errors Off
+    php_value upload_max_filesize 20M
+    php_value post_max_size 22M
+    php_value max_execution_time 60
+</IfModule>

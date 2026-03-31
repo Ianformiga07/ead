@@ -1,0 +1,3 @@
+# /app/.htaccess — Bloquear acesso direto à pasta app
+Order deny,allow
+Deny from all
