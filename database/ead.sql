@@ -216,3 +216,9 @@ INSERT INTO usuarios (nome, email, senha, perfil, status) VALUES
  'admin', 1);
 
 -- Nota: senha padrão 'password' — altere após o primeiro login!
+
+-- ─────────────────────────────────────────────────────────────
+-- MIGRAÇÃO v2: Pasta de vídeos para aulas
+-- Execute no servidor: criar pasta public/uploads/videos/
+-- As aulas com upload de vídeo salvam url_video como 'local://nome_arquivo.mp4'
+-- ─────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 <?php
 // config/app.php
 
-define('APP_NAME', 'EAD Plataforma');
+define('APP_NAME', 'CRMV EAD');
 define('APP_VERSION', '1.0.0');
 
 // ── Detecta automaticamente protocolo, host e porta ──────
@@ -37,3 +37,7 @@ date_default_timezone_set('America/Sao_Paulo');
 
 session_name(SESSION_NAME);
 session_start();
+
+// Upload de vídeo para aulas
+define('ALLOWED_VIDEO', ['mp4','webm','ogg','mov']);
+define('VIDEO_PATH', UPLOAD_PATH . '/videos');

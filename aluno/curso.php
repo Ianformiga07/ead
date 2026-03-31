@@ -129,7 +129,16 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
     <div class="bg-white border rounded-3 overflow-hidden">
       <?php if ($aulaAtual['url_video']): ?>
       <div class="video-wrapper">
-        <iframe src="<?= embedVideo($aulaAtual['url_video']) ?>" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+        <?php if (str_starts_with($aulaAtual['url_video'], 'local://')): ?>
+          <?php $nomeVideo = str_replace('local://', '', $aulaAtual['url_video']); ?>
+          <video controls style="position:absolute;top:0;left:0;width:100%;height:100%;background:#000"
+                 preload="metadata">
+            <source src="<?= APP_URL ?>/public/uploads/videos/<?= e($nomeVideo) ?>" type="video/mp4">
+            Seu navegador não suporta o player de vídeo.
+          </video>
+        <?php else: ?>
+          <iframe src="<?= embedVideo($aulaAtual['url_video']) ?>" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"></iframe>
+        <?php endif; ?>
       </div>
       <?php else: ?>
       <div class="d-flex align-items-center justify-content-center bg-dark rounded-top-3" style="height:360px">
