@@ -15,14 +15,23 @@ $matriModel = new MatriculaModel();
 $curso = $cursoModel->findById($cursoId);
 $mat   = $matriModel->buscar($user['id'], $cursoId);
 
-if (!$curso || !$mat) {
+if (!$curso || !$mat || $mat['status'] === 'cancelada') {
     setFlash('error', 'Acesso negado.');
     redirect(APP_URL . '/aluno/dashboard.php');
 }
 
+// Verificar se o aluno completou todas as aulas antes de acessar a avaliação
+$aulaModel = new AulaModel();
+$totalAulas = $aulaModel->totalPorCurso($cursoId);
+$assistidas = count($aulaModel->assistidas($user['id'], $cursoId));
+if ($totalAulas > 0 && $assistidas < $totalAulas) {
+    setFlash('error', 'Você precisa concluir todas as aulas antes de fazer a avaliação.');
+    redirect(APP_URL . '/aluno/curso.php?id=' . $cursoId);
+}
+
 $avaliacao = $avalModel->porCurso($cursoId);
 if (!$avaliacao) {
-    setFlash('error', 'Avaliação não encontrada.');
+    setFlash('error', 'Avaliação ainda não foi configurada. Entre em contato com o administrador.');
     redirect(APP_URL . '/aluno/curso.php?id=' . $cursoId);
 }
 

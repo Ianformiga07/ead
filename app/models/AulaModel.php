@@ -3,7 +3,7 @@
 
 class AulaModel extends Model {
     public function porCurso(int $cursoId): array {
-        return $this->findAll("SELECT * FROM aulas WHERE curso_id=? ORDER BY ordem", [$cursoId]);
+        return $this->findAll("SELECT * FROM aulas WHERE curso_id=? AND status=1 ORDER BY ordem", [$cursoId]);
     }
 
     public function findById(int $id): array|false {
@@ -41,7 +41,7 @@ class AulaModel extends Model {
         $rows = $this->findAll(
             "SELECT p.aula_id FROM progresso_aulas p
              JOIN aulas a ON p.aula_id=a.id
-             WHERE p.aluno_id=? AND a.curso_id=? AND p.assistido=1",
+             WHERE p.aluno_id=? AND a.curso_id=? AND a.status=1 AND p.assistido=1",
             [$alunoId, $cursoId]
         );
         return array_column($rows, 'aula_id');

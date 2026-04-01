@@ -1,4 +1,4 @@
-  </div><!-- /container-fluid -->
+</div><!-- /container-fluid -->
 </div><!-- /aluno-wrapper -->
 
 <footer class="aluno-footer">
@@ -12,6 +12,7 @@
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.3/js/bootstrap.bundle.min.js"></script>
+<?php if (!empty($extraJs)) echo $extraJs; ?>
 <script src="<?= APP_URL ?>/public/js/aluno.js"></script>
 </body>
 </html>

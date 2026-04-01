@@ -37,13 +37,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'curso')
     }
     if ($id) {
         $cursoModel->atualizar($id, $d);
+        // Se ativou avaliação e ainda não existe registro, criar automaticamente
+        if ($d['tem_avaliacao']) {
+            $avalExiste = $avalModel->porCurso($id);
+            if (!$avalExiste) {
+                $avalModel->criar([
+                    'curso_id'   => $id,
+                    'titulo'     => 'Avaliação Final — ' . $d['nome'],
+                    'descricao'  => '',
+                    'tentativas' => 1,
+                ]);
+            }
+        }
         logAction('curso.atualizar', "Curso ID $id");
         setFlash('success', 'Configurações salvas!');
         redirect(APP_URL . "/admin/cursos.php?acao=detalhe&id=$id&tab=config");
     } else {
         $newId = $cursoModel->criar($d);
+        // Se já criou com avaliação, criar o registro automaticamente
+        if ($d['tem_avaliacao']) {
+            $avalModel->criar([
+                'curso_id'   => $newId,
+                'titulo'     => 'Avaliação Final — ' . $d['nome'],
+                'descricao'  => '',
+                'tentativas' => 1,
+            ]);
+        }
         logAction('curso.criar', "Curso ID $newId");
-        setFlash('success', 'Curso criado! Configure as aulas e avaliação.');
+        setFlash('success', 'Curso criado! Configure as aulas e a avaliação.');
         redirect(APP_URL . "/admin/cursos.php?acao=detalhe&id=$newId&tab=config");
     }
 }

@@ -222,3 +222,11 @@ INSERT INTO usuarios (nome, email, senha, perfil, status) VALUES
 -- Execute no servidor: criar pasta public/uploads/videos/
 -- As aulas com upload de vídeo salvam url_video como 'local://nome_arquivo.mp4'
 -- ─────────────────────────────────────────────────────────────
+
+-- ─────────────────────────────────────────────────────────────
+-- MIGRAÇÃO: Coluna verso_conteudo em modelos_certificado
+-- Execute no banco de dados:
+ALTER TABLE modelos_certificado
+  ADD COLUMN IF NOT EXISTS verso_conteudo LONGTEXT DEFAULT NULL COMMENT 'HTML do verso do certificado (CKEditor)',
+  ADD COLUMN IF NOT EXISTS texto_frente TEXT DEFAULT NULL COMMENT 'Texto customizado da frente do certificado';
+-- ─────────────────────────────────────────────────────────────

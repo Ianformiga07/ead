@@ -1,7 +1,7 @@
 <?php
 /**
- * aluno/certificado.php — CRMV-TO EAD
- * Certificado institucional padrão CRMV-TO com frente e verso
+ * aluno/certificado.php — CRMV EAD
+ * Certificado institucional: frente (estilo ADAPEC/CRMV) + verso rico (CKEditor)
  */
 require_once __DIR__ . '/../app/bootstrap.php';
 authCheck('aluno');
@@ -28,122 +28,304 @@ if (!$cert) {
     $cert = $certModel->buscar($user['id'], $cursoId);
 }
 
-$validarUrl  = APP_URL . '/validar.php?codigo=' . urlencode($cert['codigo']);
+$modelo        = $certModel->modelo($cursoId);
+$validarUrl    = APP_URL . '/validar.php?codigo=' . urlencode($cert['codigo']);
 $dataConclusao = dataBR($mat['concluido_em'] ?? $cert['emitido_em']);
 
-// Formatar conteúdo programático em lista
-$conteudoItems = [];
-if (!empty($cert['conteudo_programatico'])) {
-    $conteudoItems = array_filter(array_map('trim', explode("\n", $cert['conteudo_programatico'])));
+// Texto da frente: usa custom ou monta o padrão com variáveis
+$textoFrenteCustom = $modelo['texto_frente'] ?? '';
+if ($textoFrenteCustom) {
+    $textoFrente = str_replace(
+        ['[NOME]',            '[CURSO]',            '[CARGA_HORARIA]',         '[DATA]'],
+        [$cert['aluno_nome'], $cert['curso_nome'],   $cert['carga_horaria'].'h', $dataConclusao],
+        $textoFrenteCustom
+    );
+} else {
+    $textoFrente = null; // usará padrão embutido no HTML
 }
 
-// Formatar instrutores em lista
-$instrutoresList = [];
-if (!empty($cert['instrutores'])) {
-    $instrutoresList = array_filter(array_map('trim', explode(',', $cert['instrutores'])));
-}
+// Verso: HTML rico do CKEditor
+$versoConteudo = $modelo['verso_conteudo'] ?? '';
+$temVerso      = trim(strip_tags($versoConteudo)) !== '';
 
 $pageTitle = 'Certificado — ' . $curso['nome'];
 include __DIR__ . '/../app/views/layouts/aluno_header.php';
 ?>
 
 <style>
-/* ── Geral ──────────────────────────────────────── */
-.cert-actions { display: flex; gap: 10px; justify-content: center; margin-bottom: 32px; flex-wrap: wrap; }
+/* ═══════════════════════════════════════════════════
+   CERTIFICADO CRMV-TO — Estilo institucional
+   Baseado no padrão visual ADAPEC/CRMV-TO
+   ═══════════════════════════════════════════════════ */
 
-/* ── Certificado Frente ─────────────────────────── */
+/* ── Layout geral ──────────────────────────────── */
+.cert-wrap {
+  max-width: 900px;
+  margin: 0 auto;
+}
+.cert-actions {
+  display: flex; gap: 10px; justify-content: center;
+  margin-bottom: 28px; flex-wrap: wrap;
+}
+
+/* ── Página (frente ou verso) ──────────────────── */
 .cert-page {
-    background: #fff;
-    width: 100%;
-    max-width: 860px;
-    margin: 0 auto 32px;
-    border: 1px solid #dde3ec;
-    border-radius: 8px;
-    overflow: hidden;
-    box-shadow: 0 4px 24px rgba(0,0,0,.08);
-    page-break-after: always;
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 28px rgba(0,0,0,.10);
+  margin-bottom: 32px;
+  position: relative;
 }
-.cert-border {
-    border: 8px solid #003d7c;
-    margin: 12px;
-    border-radius: 4px;
-    padding: 40px 50px;
-}
-.cert-header { text-align: center; margin-bottom: 32px; border-bottom: 2px solid #003d7c; padding-bottom: 24px; }
-.cert-logo-area { display: flex; align-items: center; justify-content: center; gap: 16px; margin-bottom: 12px; }
-.cert-logo-icon {
-    width: 72px; height: 72px; background: #003d7c; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
-}
-.cert-logo-icon svg { width: 44px; height: 44px; fill: white; }
-.cert-org-name { text-align: left; }
-.cert-org-sigla { font-size: 28px; font-weight: 800; color: #003d7c; letter-spacing: 2px; line-height: 1; }
-.cert-org-full { font-size: 11px; color: #555; line-height: 1.4; max-width: 220px; }
-.cert-subtitulo { font-size: 13px; color: #666; letter-spacing: 3px; text-transform: uppercase; margin-top: 4px; }
 
-.cert-body { text-align: center; }
-.cert-certifica { font-size: 13px; color: #666; letter-spacing: 3px; text-transform: uppercase; margin-bottom: 8px; }
-.cert-nome { font-size: 34px; font-weight: 700; color: #003d7c; margin-bottom: 16px; line-height: 1.2; }
-.cert-texto { font-size: 14px; color: #444; line-height: 1.8; margin-bottom: 24px; }
-.cert-curso-destaque { font-size: 20px; font-weight: 700; color: #c8841a; display: block; margin: 8px 0; }
-.cert-detalhes {
-    display: flex; justify-content: center; gap: 32px; margin: 24px 0;
-    padding: 16px; background: #f0f5ff; border-radius: 8px; flex-wrap: wrap;
+/* ── Barra lateral colorida (estilo ADAPEC) ─────── */
+.cert-sidebar {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 18px;
+  background: linear-gradient(180deg, #003d7c 60%, #c8841a 100%);
 }
-.cert-detalhe-item { text-align: center; }
-.cert-detalhe-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; }
-.cert-detalhe-valor { font-size: 16px; font-weight: 700; color: #003d7c; }
 
-.cert-assinaturas { display: flex; justify-content: center; gap: 60px; margin-top: 36px; flex-wrap: wrap; }
+/* ── Borda interna ──────────────────────────────── */
+.cert-inner {
+  margin: 14px 14px 14px 32px;
+  border: 2px solid #003d7c;
+  border-radius: 4px;
+  padding: 36px 48px 32px;
+  min-height: 480px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Cabeçalho ──────────────────────────────────── */
+.cert-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 20px;
+  margin-bottom: 24px;
+  border-bottom: 2px solid #003d7c;
+}
+.cert-logo-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.cert-logo-circle {
+  width: 66px; height: 66px;
+  background: #003d7c;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.cert-logo-circle svg { width: 40px; height: 40px; fill: white; }
+.cert-org-name { }
+.cert-org-sigla {
+  font-size: 26px; font-weight: 800; color: #003d7c;
+  letter-spacing: 2px; line-height: 1;
+}
+.cert-org-full {
+  font-size: 10px; color: #555; line-height: 1.4; max-width: 200px;
+}
+.cert-title-right {
+  text-align: right;
+}
+.cert-titulo-word {
+  font-size: 42px; font-weight: 800;
+  color: #003d7c; letter-spacing: 1px;
+  line-height: 1;
+}
+.cert-edu-label {
+  font-size: 11px; color: #888;
+  text-transform: uppercase; letter-spacing: 2px;
+}
+
+/* ── Corpo da frente ─────────────────────────────── */
+.cert-body { flex: 1; }
+.cert-certifica-label {
+  font-size: 12px; color: #888;
+  letter-spacing: 2.5px; text-transform: uppercase;
+  text-align: center; margin-bottom: 6px;
+}
+.cert-nome {
+  font-size: 30px; font-weight: 800;
+  color: #003d7c;
+  text-align: center;
+  margin-bottom: 18px;
+  line-height: 1.2;
+}
+.cert-texto-principal {
+  font-size: 14px; color: #444;
+  text-align: center;
+  line-height: 1.8;
+  margin-bottom: 20px;
+  max-width: 640px;
+  margin-left: auto; margin-right: auto;
+}
+.cert-curso-nome {
+  font-size: 19px; font-weight: 800;
+  color: #1a2a3a;
+  display: block;
+  margin: 6px 0;
+}
+.cert-periodo {
+  font-size: 13px; color: #555;
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+/* Destaques (período, carga horária) */
+.cert-destaques {
+  display: flex;
+  justify-content: center;
+  gap: 28px;
+  background: #f0f5fb;
+  border-radius: 8px;
+  padding: 14px 24px;
+  margin-bottom: 28px;
+  flex-wrap: wrap;
+}
+.cert-destaque-item { text-align: center; }
+.cert-destaque-label {
+  font-size: 10px; color: #8898aa;
+  text-transform: uppercase; letter-spacing: 1px;
+}
+.cert-destaque-valor {
+  font-size: 15px; font-weight: 800; color: #003d7c;
+}
+
+/* Assinaturas */
+.cert-assinaturas {
+  display: flex;
+  justify-content: flex-start;
+  gap: 60px;
+  margin-top: 20px;
+  flex-wrap: wrap;
+}
 .cert-assinatura { text-align: center; }
-.cert-assinatura-linha { border-top: 1px solid #333; padding-top: 8px; margin-top: 40px; width: 180px; }
-.cert-assinatura-nome { font-size: 12px; font-weight: 700; color: #333; }
+.cert-assinatura-img {
+  height: 52px;
+  margin-bottom: 4px;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.cert-assinatura-linha {
+  border-top: 1px solid #333;
+  padding-top: 6px;
+  margin-top: 4px;
+  width: 170px;
+}
+.cert-assinatura-nome { font-size: 12px; font-weight: 700; color: #222; }
 .cert-assinatura-cargo { font-size: 11px; color: #666; }
 
-.cert-footer {
-    margin-top: 32px; padding-top: 16px; border-top: 1px solid #dde3ec;
-    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;
+/* Rodapé (código + QR) */
+.cert-footer-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid #dde6f0;
+  flex-wrap: wrap;
+  gap: 12px;
 }
-.cert-codigo { font-family: monospace; font-size: 11px; color: #888; word-break: break-all; }
-.cert-qr { text-align: center; }
-.cert-qr img { width: 80px; height: 80px; }
+.cert-codigo-wrap { }
+.cert-codigo-label { font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+.cert-codigo-val {
+  font-family: monospace; font-size: 11px; color: #888;
+  word-break: break-all;
+}
+.cert-qr-wrap { text-align: center; }
+.cert-qr-wrap img { width: 76px; height: 76px; border: 1px solid #dde6f0; padding: 3px; background: #fff; }
+.cert-qr-label { font-size: 9px; color: #aaa; margin-top: 3px; }
 
-/* ── Verso ──────────────────────────────────────── */
-.cert-verso .cert-border { padding: 36px 50px; }
-.cert-verso-title { font-size: 16px; font-weight: 700; color: #003d7c; margin-bottom: 20px; padding-bottom: 10px; border-bottom: 2px solid #003d7c; }
-.cert-section { margin-bottom: 28px; }
-.cert-section h3 { font-size: 13px; font-weight: 700; color: #c8841a; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
-.cert-conteudo-list { list-style: none; padding: 0; margin: 0; }
-.cert-conteudo-list li { padding: 6px 0 6px 20px; border-bottom: 1px solid #f0f0f0; font-size: 13px; color: #444; position: relative; }
-.cert-conteudo-list li::before { content: '▸'; position: absolute; left: 0; color: #003d7c; }
-.cert-instrutores-grid { display: flex; gap: 16px; flex-wrap: wrap; }
-.cert-instrutor-card { background: #f7f9fc; border: 1px solid #dde3ec; border-radius: 6px; padding: 10px 16px; }
-.cert-instrutor-nome { font-size: 13px; font-weight: 600; color: #333; }
-.cert-instrutor-label { font-size: 11px; color: #888; }
+/* ── VERSO ───────────────────────────────────────── */
+.cert-verso .cert-inner { padding: 32px 48px; }
+.cert-verso-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 16px; margin-bottom: 24px;
+  border-bottom: 2px solid #003d7c;
+}
+.cert-verso-titulo {
+  font-size: 16px; font-weight: 800; color: #003d7c;
+}
+.cert-verso-curso {
+  font-size: 12px; color: #888;
+}
 
-/* ── Impressão ──────────────────────────────────── */
+/* Conteúdo rico do CKEditor */
+.cert-verso-content {
+  font-size: 13px; line-height: 1.7; color: #333;
+}
+.cert-verso-content h2 {
+  font-size: 15px; font-weight: 700; color: #003d7c;
+  margin-top: 20px; margin-bottom: 8px;
+  padding-bottom: 4px; border-bottom: 1px solid #e0eaf6;
+}
+.cert-verso-content h3 {
+  font-size: 13px; font-weight: 700; color: #c8841a;
+  text-transform: uppercase; letter-spacing: .5px;
+  margin-top: 16px; margin-bottom: 6px;
+}
+.cert-verso-content ul {
+  padding-left: 20px; margin-bottom: 12px;
+}
+.cert-verso-content ul li {
+  margin-bottom: 4px; padding-left: 4px;
+}
+.cert-verso-content table {
+  width: 100%; border-collapse: collapse; margin-bottom: 12px;
+}
+.cert-verso-content table td,
+.cert-verso-content table th {
+  border: 1px solid #dde6f0; padding: 6px 10px; font-size: 12px;
+}
+.cert-verso-content table th { background: #f0f5fb; font-weight: 700; }
+
+.cert-verso-footer {
+  margin-top: 24px; padding-top: 14px;
+  border-top: 1px solid #dde6f0;
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 10px;
+}
+.cert-verso-rodape { font-size: 10px; color: #aaa; line-height: 1.6; }
+.cert-verso-codigo { font-family: monospace; font-size: 10px; color: #ccc; }
+
+/* ── Impressão ───────────────────────────────────── */
 @media print {
-    .aluno-navbar, .aluno-footer, .cert-actions, .mb-4, .breadcrumb { display: none !important; }
-    .aluno-wrapper { padding: 0 !important; background: none !important; }
-    .container-fluid { padding: 0 !important; }
-    .cert-page { box-shadow: none !important; border: none !important; max-width: 100% !important; margin: 0 !important; }
-    .cert-border { margin: 0 !important; border: 8px solid #003d7c !important; }
-    @page { size: A4 landscape; margin: 10mm; }
+  .aluno-navbar,
+  .aluno-footer,
+  .cert-actions,
+  .breadcrumb-nav { display: none !important; }
+
+  .aluno-wrapper { padding: 0 !important; background: none !important; }
+  .container-fluid { padding: 0 !important; }
+  body { background: #fff !important; }
+
+  .cert-page {
+    box-shadow: none !important;
+    border: none !important;
+    margin-bottom: 0 !important;
+    page-break-after: always;
+    break-after: page;
+  }
+  .cert-inner { min-height: 0; }
+
+  @page { size: A4 landscape; margin: 8mm; }
 }
 </style>
 
 <!-- Navegação -->
-<div class="mb-4 d-flex align-items-center gap-3">
+<div class="breadcrumb-nav mb-4 d-flex align-items-center gap-3">
   <a href="<?= APP_URL ?>/aluno/dashboard.php" class="btn btn-sm btn-outline-secondary">
     <i class="bi bi-arrow-left"></i>
   </a>
   <div>
-    <h4 class="mb-0">Certificado de Conclusão</h4>
+    <h5 class="mb-0">Certificado de Conclusão</h5>
     <small class="text-muted"><?= e($curso['nome']) ?></small>
   </div>
 </div>
 
-<!-- Botões de ação -->
+<!-- Botões -->
 <div class="cert-actions">
   <button onclick="window.print()" class="btn btn-primary px-4">
     <i class="bi bi-printer me-2"></i>Imprimir / Salvar PDF
@@ -156,19 +338,30 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
   </a>
 </div>
 
-<!-- ════════════════════════════════════════════════════════
-     FRENTE DO CERTIFICADO
-     ════════════════════════════════════════════════════════ -->
-<div class="cert-page" id="certFrente">
-  <div class="cert-border">
+<div class="cert-wrap">
 
-    <!-- Cabeçalho Institucional -->
+<!-- ════════════════════════════════════════════════
+     FRENTE DO CERTIFICADO
+     ════════════════════════════════════════════════ -->
+<div class="cert-page" id="certFrente">
+  <!-- Barra lateral colorida estilo ADAPEC -->
+  <div class="cert-sidebar"></div>
+
+  <!-- Imagem de fundo (se houver) -->
+  <?php if (!empty($modelo['frente'])): ?>
+  <img src="<?= APP_URL ?>/public/uploads/modelos/<?= e($modelo['frente']) ?>"
+       style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.08;z-index:0"
+       alt="">
+  <?php endif; ?>
+
+  <div class="cert-inner" style="position:relative;z-index:1">
+
+    <!-- Cabeçalho: Logo + Título -->
     <div class="cert-header">
-      <div class="cert-logo-area">
-        <div class="cert-logo-icon">
-          <!-- Ícone veterinário estilizado -->
+      <div class="cert-logo-left">
+        <div class="cert-logo-circle">
           <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <path d="M50 10C28 10 10 28 10 50s18 40 40 40 40-18 40-40S72 10 50 10zm0 6c9 0 17 3 24 8L18 72c-5-7-8-15-8-22C10 31 29 16 50 16zm0 68c-9 0-17-3-24-8l56-48c5 7 8 15 8 22C90 69 71 84 50 84z"/>
+            <path d="M50 8C27 8 8 27 8 50s19 42 42 42 42-19 42-42S73 8 50 8zm0 8c11 0 21 4 29 11L19 79C12 71 8 61 8 50 8 27 27 16 50 16zm0 68c-11 0-21-4-29-11l60-52c7 8 11 18 11 29 0 23-19 34-42 34z"/>
           </svg>
         </div>
         <div class="cert-org-name">
@@ -176,122 +369,125 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
           <div class="cert-org-full">Conselho Regional de Medicina<br>Veterinária do Tocantins</div>
         </div>
       </div>
-      <div class="cert-subtitulo">Plataforma de Educação Continuada</div>
+      <div class="cert-title-right">
+        <div class="cert-titulo-word">Certificado</div>
+        <div class="cert-edu-label">Educação Continuada</div>
+      </div>
     </div>
 
     <!-- Corpo -->
     <div class="cert-body">
-      <p class="cert-certifica">Certificamos que</p>
+      <p class="cert-certifica-label">O CRMV-TO certifica que</p>
       <div class="cert-nome"><?= e($cert['aluno_nome']) ?></div>
 
-      <p class="cert-texto">
-        concluiu com êxito o curso
-        <span class="cert-curso-destaque"><?= e($cert['curso_nome']) ?></span>
+      <?php if ($textoFrente): ?>
+      <!-- Texto customizado pelo admin -->
+      <p class="cert-texto-principal"><?= nl2br(e($textoFrente)) ?></p>
+      <?php else: ?>
+      <!-- Texto padrão institucional -->
+      <p class="cert-texto-principal">
+        participou do
+        <span class="cert-curso-nome"><?= e($cert['curso_nome']) ?></span>
         realizado pelo Conselho Regional de Medicina Veterinária do Tocantins (CRMV-TO),
-        tendo demonstrado dedicação e aproveitamento satisfatório em todas as etapas do programa.
+        tendo concluído com êxito todas as etapas do programa.
       </p>
+      <?php endif; ?>
 
-      <div class="cert-detalhes">
-        <div class="cert-detalhe-item">
-          <div class="cert-detalhe-label">Carga Horária</div>
-          <div class="cert-detalhe-valor"><?= $cert['carga_horaria'] ?>h</div>
+      <!-- Destaques -->
+      <div class="cert-destaques">
+        <div class="cert-destaque-item">
+          <div class="cert-destaque-label">Data de Conclusão</div>
+          <div class="cert-destaque-valor"><?= $dataConclusao ?></div>
         </div>
-        <div class="cert-detalhe-item">
-          <div class="cert-detalhe-label">Data de Conclusão</div>
-          <div class="cert-detalhe-valor"><?= $dataConclusao ?></div>
+        <div class="cert-destaque-item">
+          <div class="cert-destaque-label">Carga Horária</div>
+          <div class="cert-destaque-valor"><?= $cert['carga_horaria'] ?> horas</div>
         </div>
-        <div class="cert-detalhe-item">
-          <div class="cert-detalhe-label">Modalidade</div>
-          <div class="cert-detalhe-valor">EAD</div>
+        <div class="cert-destaque-item">
+          <div class="cert-destaque-label">Modalidade</div>
+          <div class="cert-destaque-valor"><?= strtoupper($cert['curso_tipo'] ?? 'EAD') ?></div>
         </div>
       </div>
 
-      <!-- Assinaturas -->
+      <!-- Área de assinatura -->
       <div class="cert-assinaturas">
         <div class="cert-assinatura">
+          <div class="cert-assinatura-img">
+            <!-- Espaço para assinatura digitalizada -->
+          </div>
           <div class="cert-assinatura-linha">
             <div class="cert-assinatura-nome">Presidente do CRMV-TO</div>
             <div class="cert-assinatura-cargo">Conselho Regional de Medicina Veterinária<br>do Tocantins</div>
           </div>
         </div>
-        <?php if (!empty($instrutoresList)): ?>
-        <div class="cert-assinatura">
-          <div class="cert-assinatura-linha">
-            <div class="cert-assinatura-nome"><?= e(reset($instrutoresList)) ?></div>
-            <div class="cert-assinatura-cargo">Instrutor(a) Responsável</div>
-          </div>
-        </div>
-        <?php endif; ?>
       </div>
     </div>
 
-    <!-- Rodapé com código e QR -->
-    <div class="cert-footer">
-      <div>
-        <div class="cert-codigo">
-          <strong>Código de Verificação:</strong><br>
-          <?= $cert['codigo'] ?>
-        </div>
-        <small style="font-size:10px;color:#aaa">Valide em: <?= e($validarUrl) ?></small>
+    <!-- Rodapé: Código + QR Code -->
+    <div class="cert-footer-bar">
+      <div class="cert-codigo-wrap">
+        <div class="cert-codigo-label">Código de Verificação</div>
+        <div class="cert-codigo-val"><?= $cert['codigo'] ?></div>
+        <div style="font-size:10px;color:#ccc;margin-top:3px">Valide em: <?= e($validarUrl) ?></div>
       </div>
-      <div class="cert-qr">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=<?= urlencode($validarUrl) ?>"
-             alt="QR Code de Validação">
-        <div style="font-size:10px;color:#aaa;margin-top:4px">Escanear para validar</div>
+      <div class="cert-qr-wrap">
+        <img src="https://api.qrserver.com/v1/create-qr-code/?size=76x76&data=<?= urlencode($validarUrl) ?>"
+             alt="QR Code">
+        <div class="cert-qr-label">Escanear para validar</div>
       </div>
     </div>
 
-  </div><!-- /.cert-border -->
-</div><!-- /.cert-page (frente) -->
+  </div><!-- /.cert-inner -->
+</div><!-- /.cert-page frente -->
 
 
-<!-- ════════════════════════════════════════════════════════
-     VERSO DO CERTIFICADO
-     ════════════════════════════════════════════════════════ -->
-<?php if (!empty($conteudoItems) || !empty($instrutoresList)): ?>
+<!-- ════════════════════════════════════════════════
+     VERSO DO CERTIFICADO (HTML rico do CKEditor)
+     ════════════════════════════════════════════════ -->
+<?php if ($temVerso): ?>
 <div class="cert-page cert-verso">
-  <div class="cert-border">
+  <div class="cert-sidebar"></div>
 
-    <div class="cert-verso-title">
-      <i class="bi bi-list-check me-2"></i>Informações Complementares — <?= e($cert['curso_nome']) ?>
-    </div>
+  <?php if (!empty($modelo['verso'])): ?>
+  <img src="<?= APP_URL ?>/public/uploads/modelos/<?= e($modelo['verso']) ?>"
+       style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.06;z-index:0"
+       alt="">
+  <?php endif; ?>
 
-    <?php if (!empty($conteudoItems)): ?>
-    <div class="cert-section">
-      <h3><i class="bi bi-book me-1"></i>Conteúdo Programático</h3>
-      <ul class="cert-conteudo-list">
-        <?php foreach ($conteudoItems as $item): ?>
-        <li><?= e($item) ?></li>
-        <?php endforeach; ?>
-      </ul>
-    </div>
-    <?php endif; ?>
+  <div class="cert-inner" style="position:relative;z-index:1">
 
-    <?php if (!empty($instrutoresList)): ?>
-    <div class="cert-section">
-      <h3><i class="bi bi-person-check me-1"></i>Corpo Docente</h3>
-      <div class="cert-instrutores-grid">
-        <?php foreach ($instrutoresList as $i => $inst): ?>
-        <div class="cert-instrutor-card">
-          <div class="cert-instrutor-label">Instrutor(a) <?= $i + 1 ?></div>
-          <div class="cert-instrutor-nome"><?= e(trim($inst)) ?></div>
+    <!-- Cabeçalho do verso -->
+    <div class="cert-verso-header">
+      <div>
+        <div class="cert-verso-titulo">
+          <i class="bi bi-list-check me-2"></i>Informações Complementares
         </div>
-        <?php endforeach; ?>
+        <div class="cert-verso-curso"><?= e($cert['curso_nome']) ?></div>
+      </div>
+      <div style="text-align:right">
+        <div class="cert-org-sigla" style="font-size:18px">CRMV-TO</div>
+        <div style="font-size:10px;color:#aaa">Educação Continuada</div>
       </div>
     </div>
-    <?php endif; ?>
 
-    <!-- Rodapé verso -->
-    <div style="margin-top:auto;padding-top:20px;border-top:1px solid #dde3ec;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
-      <div style="font-size:11px;color:#888">
+    <!-- Conteúdo rico do CKEditor -->
+    <div class="cert-verso-content">
+      <?= $versoConteudo /* HTML sanitizado pelo CKEditor — nunca vem de input direto do aluno */ ?>
+    </div>
+
+    <!-- Rodapé do verso -->
+    <div class="cert-verso-footer">
+      <div class="cert-verso-rodape">
         <strong>CRMV-TO</strong> · Conselho Regional de Medicina Veterinária do Tocantins<br>
-        Este documento é emitido eletronicamente e pode ser verificado no endereço indicado na frente.
+        Certificado emitido em <?= $dataConclusao ?> · Este documento pode ser verificado online.
       </div>
-      <div style="font-size:11px;color:#aaa;font-family:monospace"><?= substr($cert['codigo'], 0, 16) ?>...</div>
+      <div class="cert-verso-codigo"><?= substr($cert['codigo'], 0, 20) ?>...</div>
     </div>
 
   </div>
 </div>
 <?php endif; ?>
+
+</div><!-- /.cert-wrap -->
 
 <?php include __DIR__ . '/../app/views/layouts/aluno_footer.php'; ?>

@@ -24,6 +24,13 @@ $assistidas= count($aulaModel->assistidas($user['id'], $cursoId));
 $prog      = $total > 0 ? (int)(($assistidas/$total)*100) : 0;
 $matriModel->atualizarProgresso($user['id'], $cursoId, $prog);
 
-if ($prog >= 100) $matriModel->concluir($user['id'], $cursoId);
+if ($prog >= 100) {
+    // Buscar dados do curso para saber se exige avaliação
+    $cursoModel = new CursoModel();
+    $cursoData  = $cursoModel->findById($cursoId);
+    if ($cursoData && !$cursoData['tem_avaliacao']) {
+        $matriModel->concluir($user['id'], $cursoId);
+    }
+}
 
 echo json_encode(['ok'=>true, 'progresso'=>$prog]);

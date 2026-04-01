@@ -36,8 +36,8 @@ $doneAulas  = count($assistidas);
 $progresso  = $totalAulas > 0 ? (int)(($doneAulas / $totalAulas) * 100) : 0;
 $matriModel->atualizarProgresso($user['id'], $cursoId, $progresso);
 
-// Auto-concluir
-if ($progresso >= 100 && $matricula['status'] === 'ativa') {
+// Auto-concluir apenas se não exige avaliação
+if ($progresso >= 100 && $matricula['status'] === 'ativa' && !$curso['tem_avaliacao']) {
     $matriModel->concluir($user['id'], $cursoId);
     $matricula['status'] = 'concluida';
 }
@@ -110,10 +110,20 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
 
     <!-- Links rápidos -->
     <div class="d-flex flex-column gap-2">
-      <?php if ($avaliacao && $curso['tem_avaliacao']): ?>
-      <a href="<?= APP_URL ?>/aluno/avaliacao.php?curso_id=<?= $cursoId ?>" class="btn btn-outline-warning">
-        <i class="bi bi-patch-question me-2"></i>Fazer Avaliação
-      </a>
+      <?php if ($curso['tem_avaliacao']): ?>
+        <?php if ($progresso >= 100 && $avaliacao): ?>
+        <a href="<?= APP_URL ?>/aluno/avaliacao.php?curso_id=<?= $cursoId ?>" class="btn btn-warning">
+          <i class="bi bi-patch-question me-2"></i>Fazer Avaliação
+        </a>
+        <?php elseif ($progresso >= 100 && !$avaliacao): ?>
+        <button class="btn btn-outline-secondary" disabled>
+          <i class="bi bi-patch-question me-2"></i>Avaliação não configurada
+        </button>
+        <?php else: ?>
+        <button class="btn btn-outline-secondary" disabled>
+          <i class="bi bi-lock me-2"></i>Conclua as aulas (<?= $progresso ?>%)
+        </button>
+        <?php endif; ?>
       <?php endif; ?>
       <?php if ($matricula['status'] === 'concluida'): ?>
       <a href="<?= APP_URL ?>/aluno/certificado.php?curso_id=<?= $cursoId ?>" class="btn btn-outline-success">
