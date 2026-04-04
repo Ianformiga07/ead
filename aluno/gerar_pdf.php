@@ -38,9 +38,10 @@ if ($textoFrenteCustom) {
     );
 }
 
-// Verso
-$versoConteudo = $modelo['verso_conteudo'] ?? '';
-$temVerso = trim(strip_tags($versoConteudo)) !== '';
+// Verso — usa conteudo_prog (campo do CKEditor) e respeita flag ativar_verso
+$ativarVerso   = ($modelo['ativar_verso'] ?? 0) == 1;
+$versoConteudo = $modelo['conteudo_prog'] ?? '';          // campo correto
+$temVerso      = $ativarVerso && trim(strip_tags($versoConteudo)) !== '';
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -147,9 +148,12 @@ $temVerso = trim(strip_tags($versoConteudo)) !== '';
   .verso-curso  { font-size: 8.5pt; color: #888; }
   .verso-content h2 { font-size: 12pt; font-weight: 700; color: #003d7c; margin: 14px 0 6px; padding-bottom: 3px; border-bottom: 1px solid #e0eaf6; }
   .verso-content h3 { font-size: 10pt; font-weight: 700; color: #c8841a; text-transform: uppercase; letter-spacing: .5px; margin: 12px 0 4px; }
-  .verso-content ul { padding-left: 18px; margin-bottom: 8px; }
-  .verso-content ul li { margin-bottom: 3px; font-size: 10.5pt; }
+  .verso-content ul { padding-left: 22px; margin: 4px 0 8px 0; list-style-type: disc !important; }
+  .verso-content ol { padding-left: 22px; margin: 4px 0 8px 0; list-style-type: decimal !important; }
+  .verso-content ul li, .verso-content ol li { margin-bottom: 3px; font-size: 10.5pt; display: list-item !important; }
   .verso-content p  { font-size: 10.5pt; margin-bottom: 8px; }
+  .verso-content strong, .verso-content b { font-weight: bold; }
+  .verso-content em, .verso-content i { font-style: italic; }
   .verso-content table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
   .verso-content table td, .verso-content table th { border: 1px solid #dde6f0; padding: 4px 8px; font-size: 9.5pt; }
   .verso-content table th { background: #f0f5fb; font-weight: 700; }
@@ -172,7 +176,7 @@ $temVerso = trim(strip_tags($versoConteudo)) !== '';
   <div class="cert-sidebar"></div>
 
   <?php if (!empty($modelo['frente'])): ?>
-  <img src="<?= APP_URL ?>/public/uploads/modelos/<?= e($modelo['frente']) ?>" class="cert-bg" alt="">
+  <img src="<?= APP_URL ?>/public/uploads/certificados/<?= e($modelo['frente']) ?>" class="cert-bg" alt="">
   <?php endif; ?>
 
   <div class="cert-inner">
@@ -247,7 +251,7 @@ $temVerso = trim(strip_tags($versoConteudo)) !== '';
   <div class="cert-sidebar"></div>
 
   <?php if (!empty($modelo['verso'])): ?>
-  <img src="<?= APP_URL ?>/public/uploads/modelos/<?= e($modelo['verso']) ?>" class="cert-bg" alt="">
+  <img src="<?= APP_URL ?>/public/uploads/certificados/<?= e($modelo['verso']) ?>" class="cert-bg" alt="">
   <?php endif; ?>
 
   <div class="cert-inner verso-inner">

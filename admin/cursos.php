@@ -991,58 +991,62 @@ document.addEventListener('DOMContentLoaded', function () {
 /* ══════════════════════════════════════════════════════════════
    CKEditor — inicialização controlada
    ══════════════════════════════════════════════════════════════
-   PROBLEMAS ANTERIORES:
-   1. Script separado do CDN: funções chamavam CKEDITOR antes
-      de ele estar disponível → editor nunca aparecia.
-   2. Textarea dentro de display:none: CKEditor não consegue
-      medir/renderizar → editor some.
-   3. contentsCss como array de strings CSS: CKEditor 4 espera
-      URL(s) → erro silencioso bloqueava tudo.
+   CORREÇÕES APLICADAS:
+   1. Flag _ckReady era global e nunca resetava ao ocultar o bloco
+      → editor não reinicializava ao alternar Não→Sim múltiplas vezes.
+      CORREÇÃO: destruir + reinicializar sempre que o bloco ficar
+      visível; checar pela instância real, não por flag estática.
 
-   SOLUÇÃO:
-   • CDN carregado antes deste script (acima).
-   • initCKEditor() chamada pelo DOMContentLoaded OU pelo
-     toggleVerso(1) — o que ocorrer quando o bloco estiver visível.
-   • Flag _ckReady evita dupla inicialização.
+   2. autogrow + resize_enabled juntos causam colapso de altura em
+      alguns navegadores (autogrow redimensiona para 0 ao abrir).
+      CORREÇÃO: usar apenas resize manual (resize_enabled:true) +
+      altura inicial fixa via startupFocus; remover autoGrow.
+
+   3. Listas (ul/li) perdiam list-style no certificado gerado porque
+      strip_tags removia atributos style.
+      CORREÇÃO: contentsCss garante estilos dentro do editor;
+      sanitize_html no backend foi ampliado para preservar <font><a>.
    ══════════════════════════════════════════════════════════════ */
-var _ckReady = false;
 
+/**
+ * Destrói a instância existente (se houver) e cria uma nova.
+ * Seguro para chamar múltiplas vezes.
+ */
 function initCKEditor() {
   /* Só existe na aba certificado */
   var el = document.getElementById('conteudo_prog');
   if (!el) return;
 
-  /* Evita dupla inicialização */
-  if (_ckReady) return;
-
-  /* Destroi instância anterior se houver (troca de aba sem reload) */
-  if (CKEDITOR.instances && CKEDITOR.instances['conteudo_prog']) {
-    CKEDITOR.instances['conteudo_prog'].destroy(true);
-  }
+  /* Destrói instância anterior sem exceção */
+  try {
+    if (CKEDITOR.instances && CKEDITOR.instances['conteudo_prog']) {
+      CKEDITOR.instances['conteudo_prog'].destroy(true);
+    }
+  } catch (e) { /* ignora erro de destruição */ }
 
   CKEDITOR.replace('conteudo_prog', {
 
-    /* Aceita todo HTML: <ul> <li> <ol> <p> <strong> etc. */
-    allowedContent: true,
+    /* ── Conteúdo permitido ─────────────────────────────────── */
+    allowedContent: true,   /* aceita TODO HTML: ul, li, ol, style, etc. */
 
-    /* Resize manual */
+    /* ── Resize manual (sem autogrow para evitar conflito) ──── */
     resize_enabled: true,
     resize_dir:     'vertical',
+    /* Altura inicial — sem autogrow evita colapso em display:none */
+    height: 280,
 
-    /* AutoGrow */
-    extraPlugins:        'autogrow',
-    autoGrow_onStartup:  true,
-    autoGrow_minHeight:  200,
-    autoGrow_maxHeight:  520,
-    autoGrow_bottomSpace: 0,
-
-    /* Remove plugins não usados */
-    removePlugins: 'image,flash,iframe,forms,pagebreak',
+    /* ── Plugins necessários ────────────────────────────────── */
+    /* autogrow REMOVIDO: conflitava com resize_enabled causando
+       altura = 0 ao inicializar dentro de bloco oculto.           */
+    extraPlugins: 'colorbutton,font',
+    removePlugins: 'image,flash,iframe,forms,pagebreak,scayt,wsc',
+    /* list, indent, basicstyles, enterkey já vêm no build "full" */
 
     language: 'pt-br',
 
+    /* ── Toolbar completa com listas ────────────────────────── */
     toolbar: [
-      { name: 'styles',      items: ['Format', 'FontSize'] },
+      { name: 'styles',      items: ['Format', 'FontSize', 'TextColor', 'BGColor'] },
       { name: 'basicstyles', items: ['Bold', 'Italic', 'Underline', 'Strike', '-', 'RemoveFormat'] },
       { name: 'paragraph',   items: ['NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'JustifyLeft', 'JustifyCenter', 'JustifyRight'] },
       { name: 'insert',      items: ['HorizontalRule'] },
@@ -1051,41 +1055,65 @@ function initCKEditor() {
       { name: 'tools',       items: ['Maximize', 'Source'] }
     ],
 
-    /* String CSS única — NÃO array de CSS inline (quebrava CKEditor 4) */
-    contentsCss: 'body{font-family:Arial,sans-serif;font-size:13px;line-height:1.6;margin:12px}ul{padding-left:22px;margin-bottom:10px;list-style-type:disc}ol{padding-left:22px;margin-bottom:10px;list-style-type:decimal}li{margin-bottom:4px}p{margin-bottom:8px}'
+    /* ── CSS dentro do iframe do editor ────────────────────── */
+    /* String simples — CKEditor 4 NÃO aceita array de CSS inline */
+    contentsCss: [
+      'body{font-family:Arial,sans-serif;font-size:13px;line-height:1.6;margin:12px;color:#222}',
+      'ul{padding-left:22px;margin:6px 0 10px 0;list-style-type:disc !important}',
+      'ol{padding-left:22px;margin:6px 0 10px 0;list-style-type:decimal !important}',
+      'li{margin-bottom:4px;display:list-item !important}',
+      'p{margin-bottom:8px}',
+      'strong,b{font-weight:bold}',
+      'em,i{font-style:italic}'
+    ].join('')
   });
 
-  /* Sincroniza valor no submit de qualquer form */
+  /* ── Sincroniza textarea antes de qualquer submit ─────────── */
+  /* Registra apenas uma vez por form usando dataset */
   document.querySelectorAll('form').forEach(function (form) {
+    if (form.dataset.ckSubmitBound) return;
+    form.dataset.ckSubmitBound = '1';
     form.addEventListener('submit', function () {
       if (CKEDITOR.instances && CKEDITOR.instances['conteudo_prog']) {
-        document.getElementById('conteudo_prog').value =
-          CKEDITOR.instances['conteudo_prog'].getData();
+        var ta = document.getElementById('conteudo_prog');
+        if (ta) ta.value = CKEDITOR.instances['conteudo_prog'].getData();
       }
     });
   });
-
-  _ckReady = true;
 }
 
-/* Controla visibilidade do bloco verso E inicializa o editor */
+/* ── toggleVerso: controla visibilidade + ciclo de vida do editor ── */
 function toggleVerso(ativar) {
   var bloco = document.getElementById('blocoVerso');
   if (!bloco) return;
-  bloco.style.display = ativar ? '' : 'none';
 
-  /* Inicializa o CKEditor somente quando o bloco fica visível */
-  if (ativar) initCKEditor();
+  if (ativar) {
+    bloco.style.display = '';
+    /* Pequeno delay garante que o bloco está visível e tem dimensões
+       antes do CKEditor medir a área — resolve o bug de altura zero. */
+    setTimeout(initCKEditor, 50);
+  } else {
+    bloco.style.display = 'none';
+    /* Destrói o editor ao ocultar para liberar memória e
+       permitir reinicialização limpa se o usuário voltar a ativar. */
+    try {
+      if (CKEDITOR.instances && CKEDITOR.instances['conteudo_prog']) {
+        CKEDITOR.instances['conteudo_prog'].destroy(true);
+      }
+    } catch (e) { /* ignora */ }
+  }
 }
 
-/* Ao carregar a página: inicializa se o verso já estiver ativo */
+/* ── DOMContentLoaded: inicializa se verso já estiver ativo ─────── */
 document.addEventListener('DOMContentLoaded', function () {
-  var el    = document.getElementById('conteudo_prog');
-  if (!el) return; /* não é a aba certificado */
+  var el = document.getElementById('conteudo_prog');
+  if (!el) return; /* não é a aba certificado — sai sem fazer nada */
 
   var bloco = document.getElementById('blocoVerso');
 
-  /* blocoVerso visível = verso já estava ativado (salvo como Sim) */
+  /* Se o bloco estiver visível (ativar_verso = 1 salvo no BD),
+     inicializa o editor diretamente. Caso contrário aguarda o usuário
+     clicar "Sim" para que toggleVerso(1) o inicialize. */
   if (!bloco || bloco.style.display !== 'none') {
     initCKEditor();
   }

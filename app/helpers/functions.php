@@ -69,10 +69,12 @@ function sanitize(string $str): string {
  */
 function sanitize_html(string $html): string
 {
-    $allowed = '<p><br><strong><b><em><i><u><s><ul><ol><li><h1><h2><h3><h4><blockquote><table><thead><tbody><tr><th><td><span><div><hr>';
+    $allowed = '<p><br><strong><b><em><i><u><s><ul><ol><li><h1><h2><h3><h4><blockquote><table><thead><tbody><tr><th><td><span><div><hr><font><a>';
     $clean = strip_tags($html, $allowed);
+    // Remove event handlers (onclick, onmouseover, etc.)
     $clean = preg_replace('/\s+on\w+\s*=\s*"[^"]*"/i', '', $clean);
     $clean = preg_replace('/\s+on\w+\s*=\s*\'[^\']*\'/i', '', $clean);
+    // Remove javascript: em atributos href/src
     $clean = preg_replace('/javascript\s*:/i', '', $clean);
     return trim($clean);
 }

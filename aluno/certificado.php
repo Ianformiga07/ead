@@ -230,14 +230,16 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
 }
 .cert-verso-html h2 { font-size: 13px; font-weight: 700; color: #003d7c; margin: 10px 0 4px; border-bottom: 1px solid #e0eaf6; padding-bottom: 2px; }
 .cert-verso-html h3 { font-size: 12px; font-weight: 700; color: #c8841a; text-transform: uppercase; letter-spacing: .4px; margin: 8px 0 4px; }
-.cert-verso-html ul { padding-left: 18px; margin-bottom: 8px; }
-.cert-verso-html ul li { margin-bottom: 3px; }
-.cert-verso-html ol  { padding-left: 18px; margin-bottom: 8px; }
+.cert-verso-html ul { padding-left: 22px; margin: 4px 0 8px 0; list-style-type: disc !important; }
+.cert-verso-html ol { padding-left: 22px; margin: 4px 0 8px 0; list-style-type: decimal !important; }
+.cert-verso-html ul li, .cert-verso-html ol li { margin-bottom: 3px; display: list-item !important; }
 .cert-verso-html table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
 .cert-verso-html table td,
 .cert-verso-html table th { border: 1px solid #dde6f0; padding: 4px 8px; font-size: 11px; }
 .cert-verso-html table th { background: #f0f5fb; font-weight: 700; }
 .cert-verso-html p { margin: 0 0 6px; }
+.cert-verso-html strong, .cert-verso-html b { font-weight: bold; }
+.cert-verso-html em, .cert-verso-html i { font-style: italic; }
 
 .cert-verso-footer {
   margin-top: 8px; padding-top: 8px; border-top: 1px solid #dde6f0;
