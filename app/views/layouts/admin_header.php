@@ -32,11 +32,18 @@
     </div>
 
     <!-- Perfil -->
+    <?php $__me = currentUser(); ?>
     <div class="sidebar-profile">
       <div class="avatar"><i class="bi bi-person-fill"></i></div>
       <div>
-        <div class="profile-name"><?= e(currentUser()['nome']) ?></div>
-        <div class="profile-role">Administrador</div>
+        <div class="profile-name"><?= e($__me['nome']) ?></div>
+        <div class="profile-role">
+          <?php if ($__me['perfil'] === 'admin'): ?>
+            <span style="color:#fca5a5"><i class="bi bi-shield-fill me-1"></i>Administrador</span>
+          <?php else: ?>
+            <span style="color:#7dd3fc"><i class="bi bi-person-badge me-1"></i>Operador</span>
+          <?php endif; ?>
+        </div>
       </div>
     </div>
 
@@ -61,8 +68,15 @@
       <li class="nav-label">Pessoas</li>
       <li><a href="<?= APP_URL ?>/admin/alunos.php"
              class="<?= str_contains($_SERVER['PHP_SELF'], 'alunos') ? 'active' : '' ?>">
-        <i class="bi bi-people-fill"></i> Alunos
+        <i class="bi bi-people-fill"></i> Veterinários / Alunos
       </a></li>
+
+      <?php if ($__me['perfil'] === 'admin'): ?>
+      <li><a href="<?= APP_URL ?>/admin/usuarios.php"
+             class="<?= str_contains($_SERVER['PHP_SELF'], 'usuarios') ? 'active' : '' ?>">
+        <i class="bi bi-shield-person-fill"></i> Usuários do Sistema
+      </a></li>
+      <?php endif; ?>
 
       <li class="nav-label">Certificados</li>
       <li><a href="<?= APP_URL ?>/admin/certificados.php"
@@ -70,11 +84,14 @@
         <i class="bi bi-award-fill"></i> Certificados
       </a></li>
 
+      <?php if ($__me['perfil'] === 'admin'): ?>
       <li class="nav-label">Sistema</li>
       <li><a href="<?= APP_URL ?>/admin/logs.php"
              class="<?= str_contains($_SERVER['PHP_SELF'], 'logs') ? 'active' : '' ?>">
         <i class="bi bi-activity"></i> Logs do Sistema
       </a></li>
+      <?php endif; ?>
+
       <li><a href="<?= APP_URL ?>/logout.php">
         <i class="bi bi-box-arrow-left"></i> Sair
       </a></li>

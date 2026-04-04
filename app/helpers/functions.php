@@ -6,8 +6,18 @@ function authCheck(string $perfil = ''): void {
     if (empty($_SESSION['usuario_id'])) {
         redirect(APP_URL . '/login.php');
     }
-    if ($perfil && $_SESSION['perfil'] !== $perfil) {
+
+    $perfilAtual = $_SESSION['perfil'] ?? '';
+
+    // Página exclusiva de admin: operador NÃO pode acessar → manda pro dashboard admin dele
+    if ($perfil === 'admin' && !in_array($perfilAtual, ['admin', 'operador'])) {
+        // Não é admin nem operador → vai para o login
         redirect(APP_URL . '/login.php');
+    }
+
+    // Página exclusiva de aluno: operador/admin não pode acessar
+    if ($perfil === 'aluno' && $perfilAtual !== 'aluno') {
+        redirect(APP_URL . '/admin/dashboard.php');
     }
 }
 
@@ -51,6 +61,20 @@ function e(string $str): string {
 
 function sanitize(string $str): string {
     return trim(strip_tags($str));
+}
+
+/**
+ * Sanitiza HTML rico (vindo do CKEditor).
+ * Permite tags seguras de formatação; remove scripts, iframes, etc.
+ */
+function sanitize_html(string $html): string
+{
+    $allowed = '<p><br><strong><b><em><i><u><s><ul><ol><li><h1><h2><h3><h4><blockquote><table><thead><tbody><tr><th><td><span><div><hr>';
+    $clean = strip_tags($html, $allowed);
+    $clean = preg_replace('/\s+on\w+\s*=\s*"[^"]*"/i', '', $clean);
+    $clean = preg_replace('/\s+on\w+\s*=\s*\'[^\']*\'/i', '', $clean);
+    $clean = preg_replace('/javascript\s*:/i', '', $clean);
+    return trim($clean);
 }
 
 /* ── Upload de Arquivo ── */
@@ -127,13 +151,11 @@ function dataBR(?string $date): string {
 
 /* ── Embed de vídeo ── */
 function embedVideo(string $url): string {
-    // YouTube
     if (preg_match('/(?:youtube\.com\/watch\?v=|youtu\.be\/)([A-Za-z0-9_-]{11})/', $url, $m)) {
-        return "https://www.youtube.com/embed/{$m[1]}";
+        return "https://www.youtube.com/embed/{$m[1]}?enablejsapi=1";
     }
-    // Vimeo
     if (preg_match('/vimeo\.com\/(\d+)/', $url, $m)) {
-        return "https://player.vimeo.com/video/{$m[1]}";
+        return "https://player.vimeo.com/video/{$m[1]}?api=1";
     }
     return $url;
 }

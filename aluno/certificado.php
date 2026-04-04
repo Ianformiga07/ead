@@ -32,21 +32,37 @@ $modelo        = $certModel->modelo($cursoId);
 $validarUrl    = APP_URL . '/validar.php?codigo=' . urlencode($cert['codigo']);
 $dataConclusao = dataBR($mat['concluido_em'] ?? $cert['emitido_em']);
 
-// Texto da frente: usa custom ou monta o padrão com variáveis
+// Dados do aluno completos (busca direto para pegar crmv)
+$userModel  = new UsuarioModel();
+$alunoData  = $userModel->findById($user['id']);
+$alunoCrmv  = $alunoData['crmv'] ?? '';
+
+// Instrutor e nome do certificado do modelo
+$nomeCert   = !empty($modelo['nome_cert'])  ? $modelo['nome_cert']  : $cert['curso_nome'];
+$instrutor  = !empty($modelo['instrutor'])  ? $modelo['instrutor']  : ($curso['instrutores'] ?? '');
+$contProg   = $modelo['conteudo_prog']       ?? $curso['conteudo_programatico'] ?? '';
+
+// Texto da frente: usa custom ou padrão
+$substituicoes = [
+    '[NOME]'          => $cert['aluno_nome'],
+    '[CURSO]'         => $cert['curso_nome'],
+    '[CARGA_HORARIA]' => $cert['carga_horaria'] . 'h',
+    '[DATA]'          => $dataConclusao,
+    '[CRMV]'          => $alunoCrmv,
+    '[INSTRUTOR]'     => $instrutor,
+];
+
 $textoFrenteCustom = $modelo['texto_frente'] ?? '';
 if ($textoFrenteCustom) {
-    $textoFrente = str_replace(
-        ['[NOME]',            '[CURSO]',            '[CARGA_HORARIA]',         '[DATA]'],
-        [$cert['aluno_nome'], $cert['curso_nome'],   $cert['carga_horaria'].'h', $dataConclusao],
-        $textoFrenteCustom
-    );
+    $textoFrente = str_replace(array_keys($substituicoes), array_values($substituicoes), $textoFrenteCustom);
 } else {
     $textoFrente = null; // usará padrão embutido no HTML
 }
 
-// Verso: HTML rico do CKEditor
+// Verso: ativado no modelo?
+$ativarVerso   = ($modelo['ativar_verso'] ?? 0) == 1;
 $versoConteudo = $modelo['verso_conteudo'] ?? '';
-$temVerso      = trim(strip_tags($versoConteudo)) !== '';
+$temVerso      = $ativarVerso && trim(strip_tags($contProg)) !== '';
 
 $pageTitle = 'Certificado — ' . $curso['nome'];
 include __DIR__ . '/../app/views/layouts/aluno_header.php';
@@ -55,262 +71,252 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
 <style>
 /* ═══════════════════════════════════════════════════
    CERTIFICADO CRMV-TO — Estilo institucional
-   Baseado no padrão visual ADAPEC/CRMV-TO
    ═══════════════════════════════════════════════════ */
 
-/* ── Layout geral ──────────────────────────────── */
-.cert-wrap {
-  max-width: 900px;
-  margin: 0 auto;
-}
+/* ── Área de visualização na tela ──────────────────── */
 .cert-actions {
   display: flex; gap: 10px; justify-content: center;
-  margin-bottom: 28px; flex-wrap: wrap;
+  margin-bottom: 20px; flex-wrap: wrap;
+}
+.cert-wrap {
+  /* Centraliza os cards na tela */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 32px;
+  padding-bottom: 40px;
 }
 
-/* ── Página (frente ou verso) ──────────────────── */
+/* ── Página A4: tamanho FIXO real ──────────────────── */
+/* A4 landscape = 297mm × 210mm  */
 .cert-page {
+  width:  297mm;
+  height: 210mm;
   background: #fff;
-  border-radius: 10px;
-  overflow: hidden;
-  box-shadow: 0 4px 28px rgba(0,0,0,.10);
-  margin-bottom: 32px;
+  border-radius: 6px;
+  overflow: hidden;          /* corta qualquer overflow na tela */
+  box-shadow: 0 4px 28px rgba(0,0,0,.14);
   position: relative;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
 
-/* ── Barra lateral colorida (estilo ADAPEC) ─────── */
+/* ── Barra lateral colorida ─────────────────────────── */
 .cert-sidebar {
   position: absolute;
   left: 0; top: 0; bottom: 0;
-  width: 18px;
+  width: 14px;
   background: linear-gradient(180deg, #003d7c 60%, #c8841a 100%);
+  z-index: 2;
 }
 
-/* ── Borda interna ──────────────────────────────── */
+/* ── Borda interna ──────────────────────────────────── */
 .cert-inner {
-  margin: 14px 14px 14px 32px;
+  position: absolute;
+  inset: 10px 10px 10px 24px;  /* deixa espaço para a barra lateral */
   border: 2px solid #003d7c;
   border-radius: 4px;
-  padding: 36px 48px 32px;
-  min-height: 480px;
+  padding: 20px 32px 16px;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
-/* ── Cabeçalho ──────────────────────────────────── */
+/* ── Cabeçalho ──────────────────────────────────────── */
 .cert-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 20px;
-  margin-bottom: 24px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
   border-bottom: 2px solid #003d7c;
+  flex-shrink: 0;
 }
-.cert-logo-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
+.cert-logo-left { display: flex; align-items: center; gap: 10px; }
 .cert-logo-circle {
-  width: 66px; height: 66px;
+  width: 52px; height: 52px;
   background: #003d7c;
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
 }
-.cert-logo-circle svg { width: 40px; height: 40px; fill: white; }
-.cert-org-name { }
-.cert-org-sigla {
-  font-size: 26px; font-weight: 800; color: #003d7c;
-  letter-spacing: 2px; line-height: 1;
-}
-.cert-org-full {
-  font-size: 10px; color: #555; line-height: 1.4; max-width: 200px;
-}
-.cert-title-right {
-  text-align: right;
-}
-.cert-titulo-word {
-  font-size: 42px; font-weight: 800;
-  color: #003d7c; letter-spacing: 1px;
-  line-height: 1;
-}
-.cert-edu-label {
-  font-size: 11px; color: #888;
-  text-transform: uppercase; letter-spacing: 2px;
-}
+.cert-logo-circle svg { width: 32px; height: 32px; fill: white; }
+.cert-org-sigla  { font-size: 22px; font-weight: 800; color: #003d7c; letter-spacing: 2px; line-height: 1; }
+.cert-org-full   { font-size: 9px; color: #555; line-height: 1.4; max-width: 180px; }
+.cert-title-right { text-align: right; }
+.cert-titulo-word { font-size: 34px; font-weight: 800; color: #003d7c; letter-spacing: 1px; line-height: 1; }
+.cert-edu-label   { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 2px; }
 
-/* ── Corpo da frente ─────────────────────────────── */
-.cert-body { flex: 1; }
+/* ── Corpo ──────────────────────────────────────────── */
+.cert-body { flex: 1; display: flex; flex-direction: column; justify-content: center; overflow: hidden; }
+
 .cert-certifica-label {
-  font-size: 12px; color: #888;
+  font-size: 10px; color: #888;
   letter-spacing: 2.5px; text-transform: uppercase;
-  text-align: center; margin-bottom: 6px;
+  text-align: center; margin-bottom: 4px;
 }
 .cert-nome {
-  font-size: 30px; font-weight: 800;
-  color: #003d7c;
-  text-align: center;
-  margin-bottom: 18px;
-  line-height: 1.2;
+  font-size: 24px; font-weight: 800; color: #003d7c;
+  text-align: center; margin-bottom: 10px; line-height: 1.2;
 }
 .cert-texto-principal {
-  font-size: 14px; color: #444;
-  text-align: center;
-  line-height: 1.8;
-  margin-bottom: 20px;
-  max-width: 640px;
-  margin-left: auto; margin-right: auto;
+  font-size: 12px; color: #444; text-align: center;
+  line-height: 1.6; margin-bottom: 10px;
+  max-width: 580px; margin-left: auto; margin-right: auto;
 }
-.cert-curso-nome {
-  font-size: 19px; font-weight: 800;
-  color: #1a2a3a;
-  display: block;
-  margin: 6px 0;
-}
-.cert-periodo {
-  font-size: 13px; color: #555;
-  text-align: center;
-  margin-bottom: 24px;
-}
+.cert-curso-nome { font-size: 15px; font-weight: 800; color: #1a2a3a; display: block; margin: 4px 0; }
 
-/* Destaques (período, carga horária) */
+/* Destaques */
 .cert-destaques {
-  display: flex;
-  justify-content: center;
-  gap: 28px;
-  background: #f0f5fb;
-  border-radius: 8px;
-  padding: 14px 24px;
-  margin-bottom: 28px;
-  flex-wrap: wrap;
+  display: flex; justify-content: center; gap: 24px;
+  background: #f0f5fb; border-radius: 6px;
+  padding: 8px 20px; margin-bottom: 10px; flex-wrap: wrap; flex-shrink: 0;
 }
 .cert-destaque-item { text-align: center; }
-.cert-destaque-label {
-  font-size: 10px; color: #8898aa;
-  text-transform: uppercase; letter-spacing: 1px;
-}
-.cert-destaque-valor {
-  font-size: 15px; font-weight: 800; color: #003d7c;
-}
+.cert-destaque-label { font-size: 9px; color: #8898aa; text-transform: uppercase; letter-spacing: 1px; }
+.cert-destaque-valor { font-size: 13px; font-weight: 800; color: #003d7c; }
 
 /* Assinaturas */
-.cert-assinaturas {
-  display: flex;
-  justify-content: flex-start;
-  gap: 60px;
-  margin-top: 20px;
-  flex-wrap: wrap;
-}
-.cert-assinatura { text-align: center; }
-.cert-assinatura-img {
-  height: 52px;
-  margin-bottom: 4px;
-  display: flex; align-items: flex-end; justify-content: center;
-}
-.cert-assinatura-linha {
-  border-top: 1px solid #333;
-  padding-top: 6px;
-  margin-top: 4px;
-  width: 170px;
-}
-.cert-assinatura-nome { font-size: 12px; font-weight: 700; color: #222; }
-.cert-assinatura-cargo { font-size: 11px; color: #666; }
+.cert-assinaturas  { display: flex; justify-content: flex-start; gap: 40px; margin-top: 8px; flex-wrap: wrap; flex-shrink: 0; }
+.cert-assinatura   { text-align: center; }
+.cert-assinatura-img { height: 36px; margin-bottom: 2px; display: flex; align-items: flex-end; justify-content: center; }
+.cert-assinatura-linha { border-top: 1px solid #333; padding-top: 4px; margin-top: 2px; width: 150px; }
+.cert-assinatura-nome  { font-size: 11px; font-weight: 700; color: #222; }
+.cert-assinatura-cargo { font-size: 10px; color: #666; }
 
-/* Rodapé (código + QR) */
+/* Rodapé */
 .cert-footer-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-end;
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid #dde6f0;
-  flex-wrap: wrap;
-  gap: 12px;
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid #dde6f0;
+  flex-wrap: wrap; gap: 8px; flex-shrink: 0;
 }
-.cert-codigo-wrap { }
-.cert-codigo-label { font-size: 10px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
-.cert-codigo-val {
-  font-family: monospace; font-size: 11px; color: #888;
-  word-break: break-all;
-}
-.cert-qr-wrap { text-align: center; }
-.cert-qr-wrap img { width: 76px; height: 76px; border: 1px solid #dde6f0; padding: 3px; background: #fff; }
-.cert-qr-label { font-size: 9px; color: #aaa; margin-top: 3px; }
+.cert-codigo-label { font-size: 9px; color: #aaa; text-transform: uppercase; letter-spacing: 1px; }
+.cert-codigo-val   { font-family: monospace; font-size: 10px; color: #888; word-break: break-all; }
+.cert-qr-wrap      { text-align: center; }
+.cert-qr-wrap img  { width: 60px; height: 60px; border: 1px solid #dde6f0; padding: 2px; background: #fff; }
+.cert-qr-label     { font-size: 8px; color: #aaa; margin-top: 2px; }
 
-/* ── VERSO ───────────────────────────────────────── */
-.cert-verso .cert-inner { padding: 32px 48px; }
+/* ── VERSO ───────────────────────────────────────────── */
+.cert-verso .cert-inner { padding: 18px 32px 14px; }
 .cert-verso-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding-bottom: 16px; margin-bottom: 24px;
-  border-bottom: 2px solid #003d7c;
+  padding-bottom: 10px; margin-bottom: 12px; border-bottom: 2px solid #003d7c;
+  flex-shrink: 0;
 }
-.cert-verso-titulo {
-  font-size: 16px; font-weight: 800; color: #003d7c;
-}
-.cert-verso-curso {
-  font-size: 12px; color: #888;
-}
+.cert-verso-titulo { font-size: 14px; font-weight: 800; color: #003d7c; }
+.cert-verso-curso  { font-size: 11px; color: #888; }
 
-/* Conteúdo rico do CKEditor */
+/* ── CONTEÚDO PROGRAMÁTICO ────────────────────────────
+   CORREÇÃO 3: white-space: pre-line preserva 
+ e bullets (•, -)
+   sem quebrar HTML rico — aplicado APENAS ao wrapper de texto puro.
+   Para HTML do CKEditor usamos classe separada .cert-verso-html
+   ──────────────────────────────────────────────────── */
 .cert-verso-content {
-  font-size: 13px; line-height: 1.7; color: #333;
+  font-size: 12px; line-height: 1.6; color: #333;
+  flex: 1; overflow: hidden;
 }
-.cert-verso-content h2 {
-  font-size: 15px; font-weight: 700; color: #003d7c;
-  margin-top: 20px; margin-bottom: 8px;
-  padding-bottom: 4px; border-bottom: 1px solid #e0eaf6;
+/* Texto puro (legado): preserva quebras e bullets */
+.cert-verso-plain {
+  white-space: pre-line;   /* respeita 
+ e espaços, não quebra layout HTML */
+  font-size: 12px; line-height: 1.6; color: #333;
 }
-.cert-verso-content h3 {
-  font-size: 13px; font-weight: 700; color: #c8841a;
-  text-transform: uppercase; letter-spacing: .5px;
-  margin-top: 16px; margin-bottom: 6px;
+/* HTML rico (CKEditor): comportamento normal */
+.cert-verso-html {
+  white-space: normal;
+  font-size: 12px; line-height: 1.6; color: #333;
 }
-.cert-verso-content ul {
-  padding-left: 20px; margin-bottom: 12px;
-}
-.cert-verso-content ul li {
-  margin-bottom: 4px; padding-left: 4px;
-}
-.cert-verso-content table {
-  width: 100%; border-collapse: collapse; margin-bottom: 12px;
-}
-.cert-verso-content table td,
-.cert-verso-content table th {
-  border: 1px solid #dde6f0; padding: 6px 10px; font-size: 12px;
-}
-.cert-verso-content table th { background: #f0f5fb; font-weight: 700; }
+.cert-verso-html h2 { font-size: 13px; font-weight: 700; color: #003d7c; margin: 10px 0 4px; border-bottom: 1px solid #e0eaf6; padding-bottom: 2px; }
+.cert-verso-html h3 { font-size: 12px; font-weight: 700; color: #c8841a; text-transform: uppercase; letter-spacing: .4px; margin: 8px 0 4px; }
+.cert-verso-html ul { padding-left: 18px; margin-bottom: 8px; }
+.cert-verso-html ul li { margin-bottom: 3px; }
+.cert-verso-html ol  { padding-left: 18px; margin-bottom: 8px; }
+.cert-verso-html table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+.cert-verso-html table td,
+.cert-verso-html table th { border: 1px solid #dde6f0; padding: 4px 8px; font-size: 11px; }
+.cert-verso-html table th { background: #f0f5fb; font-weight: 700; }
+.cert-verso-html p { margin: 0 0 6px; }
 
 .cert-verso-footer {
-  margin-top: 24px; padding-top: 14px;
-  border-top: 1px solid #dde6f0;
+  margin-top: 8px; padding-top: 8px; border-top: 1px solid #dde6f0;
   display: flex; justify-content: space-between; align-items: center;
-  flex-wrap: wrap; gap: 10px;
+  flex-wrap: wrap; gap: 6px; flex-shrink: 0;
 }
-.cert-verso-rodape { font-size: 10px; color: #aaa; line-height: 1.6; }
-.cert-verso-codigo { font-family: monospace; font-size: 10px; color: #ccc; }
+.cert-verso-rodape  { font-size: 9px; color: #aaa; line-height: 1.5; }
+.cert-verso-codigo  { font-family: monospace; font-size: 9px; color: #ccc; }
 
-/* ── Impressão ───────────────────────────────────── */
+/* ══════════════════════════════════════════════════════
+   IMPRESSÃO — A4 LANDSCAPE PERFEITO
+   Cada .cert-page = 1 folha A4 completa.
+   ══════════════════════════════════════════════════════ */
 @media print {
+
+  /* Ocultar tudo que não é certificado */
   .aluno-navbar,
   .aluno-footer,
   .cert-actions,
   .breadcrumb-nav { display: none !important; }
 
-  .aluno-wrapper { padding: 0 !important; background: none !important; }
-  .container-fluid { padding: 0 !important; }
-  body { background: #fff !important; }
-
-  .cert-page {
-    box-shadow: none !important;
-    border: none !important;
-    margin-bottom: 0 !important;
-    page-break-after: always;
-    break-after: page;
+  html, body {
+    margin: 0 !important; padding: 0 !important;
+    background: #fff !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    width: 100% !important; height: 100% !important;
   }
-  .cert-inner { min-height: 0; }
 
-  @page { size: A4 landscape; margin: 8mm; }
+  .aluno-wrapper,
+  .container-fluid,
+  .cert-wrap {
+    display: block !important;
+    margin: 0 !important; padding: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Cada .cert-page ocupa 1 página A4 inteira */
+  .cert-page {
+    /* Dimensão exata A4 landscape */
+    width:  297mm !important;
+    height: 210mm !important;
+    /* Sem visual de card */
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: relative !important;
+    /* Cada página começa numa nova folha; a 1ª não cria folha em branco */
+    break-before: page;
+    page-break-before: always;
+    /* Sem quebra interna */
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    /* Garante que não vaze para a próxima folha */
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+  /* Primeira página: sem quebra antes (evita folha em branco inicial) */
+  .cert-page:first-child {
+    break-before: auto !important;
+    page-break-before: auto !important;
+  }
+
+  /* Borda interna: usa inset absoluto para preencher a página */
+  .cert-inner {
+    position: absolute !important;
+    inset: 8mm 8mm 8mm 18mm !important;
+    padding: 14px 28px 12px !important;
+    margin: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Definição da página */
+  @page {
+    size: A4 landscape;
+    margin: 0;
+  }
 }
 </style>
 
@@ -349,7 +355,7 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
 
   <!-- Imagem de fundo (se houver) -->
   <?php if (!empty($modelo['frente'])): ?>
-  <img src="<?= APP_URL ?>/public/uploads/modelos/<?= e($modelo['frente']) ?>"
+  <img src="<?= APP_URL ?>/public/uploads/certificados/<?= e($modelo['frente']) ?>"
        style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.08;z-index:0"
        alt="">
   <?php endif; ?>
@@ -371,6 +377,9 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
       </div>
       <div class="cert-title-right">
         <div class="cert-titulo-word">Certificado</div>
+        <?php if (!empty($nomeCert) && $nomeCert !== $cert['curso_nome']): ?>
+        <div style="font-size:11px;color:#c8841a;font-weight:600;margin-top:2px"><?= e($nomeCert) ?></div>
+        <?php endif; ?>
         <div class="cert-edu-label">Educação Continuada</div>
       </div>
     </div>
@@ -449,7 +458,7 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
   <div class="cert-sidebar"></div>
 
   <?php if (!empty($modelo['verso'])): ?>
-  <img src="<?= APP_URL ?>/public/uploads/modelos/<?= e($modelo['verso']) ?>"
+  <img src="<?= APP_URL ?>/public/uploads/certificados/<?= e($modelo['verso']) ?>"
        style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.06;z-index:0"
        alt="">
   <?php endif; ?>
@@ -470,10 +479,37 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
       </div>
     </div>
 
-    <!-- Conteúdo rico do CKEditor -->
-    <div class="cert-verso-content">
-      <?= $versoConteudo /* HTML sanitizado pelo CKEditor — nunca vem de input direto do aluno */ ?>
+    <!-- Conteúdo Programático (se houver) -->
+    <?php if (trim(strip_tags($contProg))): ?>
+    <div class="cert-verso-content" style="margin-bottom:10px">
+      <?php
+        // Detecta se é HTML rico (CKEditor) ou texto puro (legado)
+        $isHtml = (bool) preg_match('/<[a-z][^>]*>/i', $contProg);
+      ?>
+      <?php if ($isHtml): ?>
+        <!-- HTML rico do CKEditor: white-space:normal -->
+        <div class="cert-verso-html">
+          <h3 style="font-size:11px;font-weight:700;color:#c8841a;text-transform:uppercase;letter-spacing:.4px;margin:0 0 6px">Conteúdo Programático</h3>
+          <?= $contProg ?>
+        </div>
+      <?php else: ?>
+        <!-- Texto puro: white-space:pre-line preserva 
+ e bullets (•,-) -->
+        <h3 style="font-size:11px;font-weight:700;color:#c8841a;text-transform:uppercase;letter-spacing:.4px;margin:0 0 4px;white-space:normal">Conteúdo Programático</h3>
+        <div class="cert-verso-plain"><?= htmlspecialchars($contProg, ENT_QUOTES) ?></div>
+      <?php endif; ?>
     </div>
+    <?php endif; ?>
+
+    <!-- verso_conteudo removido conforme solicitação -->
+
+    <!-- Instrutor(es) no verso -->
+    <?php if ($instrutor): ?>
+    <div style="margin-top:16px;padding-top:12px;border-top:1px solid #dde6f0">
+      <strong style="font-size:12px;color:#003d7c">Instrutor(es):</strong>
+      <span style="font-size:12px;color:#374151;margin-left:6px"><?= htmlspecialchars($instrutor, ENT_QUOTES) ?></span>
+    </div>
+    <?php endif; ?>
 
     <!-- Rodapé do verso -->
     <div class="cert-verso-footer">

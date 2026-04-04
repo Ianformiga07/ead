@@ -6,8 +6,14 @@ require_once __DIR__ . '/app/helpers/functions.php';
 require_once __DIR__ . '/app/models/Model.php';
 require_once __DIR__ . '/app/models/UsuarioModel.php';
 
+// Se já está logado, redireciona para o painel correto
 if (isLoggedIn()) {
-    redirect($_SESSION['perfil'] === 'admin' ? APP_URL . '/admin/dashboard.php' : APP_URL . '/aluno/dashboard.php');
+    $perfil = $_SESSION['perfil'] ?? '';
+    if (in_array($perfil, ['admin', 'operador'])) {
+        redirect(APP_URL . '/admin/dashboard.php');
+    } else {
+        redirect(APP_URL . '/aluno/dashboard.php');
+    }
 }
 
 $erro = '';
@@ -25,7 +31,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['perfil']     = $usuario['perfil'];
             $_SESSION['email']      = $usuario['email'];
             logAction('login', "Login: {$usuario['email']}");
-            redirect($usuario['perfil'] === 'admin' ? APP_URL . '/admin/dashboard.php' : APP_URL . '/aluno/dashboard.php');
+
+            // admin e operador vão para o painel admin
+            if (in_array($usuario['perfil'], ['admin', 'operador'])) {
+                redirect(APP_URL . '/admin/dashboard.php');
+            } else {
+                redirect(APP_URL . '/aluno/dashboard.php');
+            }
         } else {
             $erro = 'E-mail ou senha inválidos.';
         }

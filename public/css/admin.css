@@ -429,3 +429,106 @@ body {
   border-left: 4px solid var(--primary); border-radius: var(--radius-sm);
   padding: 12px 16px; font-size: 13px; color: var(--primary-dark);
 }
+
+/* ══════════════════════════════════════════════════
+   CERTIFICADO — Configuração estilo Moodle
+   ══════════════════════════════════════════════════ */
+
+.cert-section {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 20px;
+  overflow: hidden;
+}
+
+.cert-section-title {
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-bottom: 1px solid var(--border);
+  padding: 12px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.cert-section > *:not(.cert-section-title) {
+  padding: 18px 18px 0;
+}
+
+.cert-section > *:last-child {
+  padding-bottom: 18px;
+}
+
+/* Variáveis clicáveis */
+.cert-variaveis {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cert-var {
+  display: inline-block;
+  background: #e0f2fe;
+  color: #0369a1;
+  border: 1px solid #7dd3fc;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-family: monospace;
+  cursor: pointer;
+  user-select: none;
+  transition: all .15s;
+}
+
+.cert-var:hover {
+  background: #0369a1;
+  color: #fff;
+  border-color: #0369a1;
+}
+
+/* Preview imagem certificado */
+.cert-preview-img {
+  background: #f8fafc;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  display: inline-block;
+}
+
+/* Stat card (reutiliza padrão) */
+.stat-card {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.04);
+}
+
+.stat-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.stat-value {
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}

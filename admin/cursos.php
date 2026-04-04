@@ -2,9 +2,12 @@
 /**
  * admin/cursos.php — CRMV EAD
  * Gerenciamento de cursos com página de detalhe em abas
+ * Operador e Admin podem acessar.
  */
 require_once __DIR__ . '/../app/bootstrap.php';
-authCheck('admin');
+if (!in_array($_SESSION['perfil'] ?? '', ['admin', 'operador'])) {
+    redirect(APP_URL . '/login.php');
+}
 
 $cursoModel = new CursoModel();
 $aulaModel  = new AulaModel();
@@ -21,15 +24,14 @@ $curso   = $id ? $cursoModel->findById($id) : null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'curso') {
     csrfCheck();
     $d = [
-        'nome'                  => sanitize($_POST['nome'] ?? ''),
-        'descricao'             => sanitize($_POST['descricao'] ?? ''),
-        'tipo'                  => $_POST['tipo'] ?? 'ead',
-        'carga_horaria'         => (int)($_POST['carga_horaria'] ?? 0),
-        'instrutores'           => sanitize($_POST['instrutores'] ?? ''),
-        'status'                => (int)($_POST['status'] ?? 1),
-        'tem_avaliacao'         => (int)($_POST['tem_avaliacao'] ?? 0),
-        'nota_minima'           => (float)($_POST['nota_minima'] ?? 60),
-        'conteudo_programatico' => sanitize($_POST['conteudo_programatico'] ?? ''),
+        'nome'          => sanitize($_POST['nome']          ?? ''),
+        'descricao'     => sanitize($_POST['descricao']     ?? ''),
+        'tipo'          => $_POST['tipo']                   ?? 'ead',
+        'carga_horaria' => (int)($_POST['carga_horaria']    ?? 0),
+        'status'        => (int)($_POST['status']           ?? 1),
+        'tem_avaliacao' => (int)($_POST['tem_avaliacao']    ?? 0),
+        'nota_minima'   => (float)($_POST['nota_minima']    ?? 60),
+        // instrutores e conteudo_programatico NÃO são mais salvos aqui (estão no certificado)
     ];
     if (!empty($_FILES['imagem']['name'])) {
         $img = uploadFile($_FILES['imagem'], UPLOAD_PATH . '/cursos', ALLOWED_IMAGE);
@@ -37,16 +39,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'curso')
     }
     if ($id) {
         $cursoModel->atualizar($id, $d);
-        // Se ativou avaliação e ainda não existe registro, criar automaticamente
         if ($d['tem_avaliacao']) {
             $avalExiste = $avalModel->porCurso($id);
             if (!$avalExiste) {
-                $avalModel->criar([
-                    'curso_id'   => $id,
-                    'titulo'     => 'Avaliação Final — ' . $d['nome'],
-                    'descricao'  => '',
-                    'tentativas' => 1,
-                ]);
+                $avalModel->criar(['curso_id' => $id, 'titulo' => 'Avaliação Final — ' . $d['nome'], 'descricao' => '', 'tentativas' => 1]);
             }
         }
         logAction('curso.atualizar', "Curso ID $id");
@@ -54,17 +50,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'curso')
         redirect(APP_URL . "/admin/cursos.php?acao=detalhe&id=$id&tab=config");
     } else {
         $newId = $cursoModel->criar($d);
-        // Se já criou com avaliação, criar o registro automaticamente
         if ($d['tem_avaliacao']) {
-            $avalModel->criar([
-                'curso_id'   => $newId,
-                'titulo'     => 'Avaliação Final — ' . $d['nome'],
-                'descricao'  => '',
-                'tentativas' => 1,
-            ]);
+            $avalModel->criar(['curso_id' => $newId, 'titulo' => 'Avaliação Final — ' . $d['nome'], 'descricao' => '', 'tentativas' => 1]);
         }
         logAction('curso.criar', "Curso ID $newId");
-        setFlash('success', 'Curso criado! Configure as aulas e a avaliação.');
+        setFlash('success', 'Curso criado! Configure as aulas e o certificado.');
         redirect(APP_URL . "/admin/cursos.php?acao=detalhe&id=$newId&tab=config");
     }
 }
@@ -72,31 +62,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'curso')
 /* ── SALVAR AULA ───────────────────────────── */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'aula') {
     csrfCheck();
-    $aulaId = (int)($_POST['aula_id'] ?? 0);
+    $aulaId   = (int)($_POST['aula_id'] ?? 0);
     $tipoAula = $_POST['tipo_aula'] ?? 'link';
-
     $d = [
         'curso_id'  => $id,
-        'titulo'    => sanitize($_POST['titulo'] ?? ''),
+        'titulo'    => sanitize($_POST['titulo']    ?? ''),
         'descricao' => sanitize($_POST['descricao'] ?? ''),
         'url_video' => '',
-        'ordem'     => (int)($_POST['ordem'] ?? 1),
+        'ordem'     => (int)($_POST['ordem']  ?? 1),
         'status'    => (int)($_POST['status'] ?? 1),
     ];
-
     if ($tipoAula === 'link') {
         $d['url_video'] = sanitize($_POST['url_video'] ?? '');
     } elseif ($tipoAula === 'upload') {
-        // Criar pasta de vídeos se não existir
         $videoDir = UPLOAD_PATH . '/videos';
         if (!is_dir($videoDir)) mkdir($videoDir, 0755, true);
-
         if (!empty($_FILES['video_file']['name'])) {
             $ext = strtolower(pathinfo($_FILES['video_file']['name'], PATHINFO_EXTENSION));
             if (in_array($ext, ALLOWED_VIDEO) && $_FILES['video_file']['size'] <= 200 * 1024 * 1024) {
                 $nomeVideo = uniqid('vid_', true) . '.' . $ext;
                 if (move_uploaded_file($_FILES['video_file']['tmp_name'], $videoDir . '/' . $nomeVideo)) {
-                    // Marcar URL com prefixo local para distinguir
                     $d['url_video'] = 'local://' . $nomeVideo;
                 }
             } else {
@@ -108,14 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'aula') 
             $d['url_video'] = $aulaAtual['url_video'] ?? '';
         }
     }
-
-    if ($aulaId) {
-        $aulaModel->atualizar($aulaId, $d);
-        setFlash('success', 'Aula atualizada!');
-    } else {
-        $aulaModel->criar($d);
-        setFlash('success', 'Aula criada!');
-    }
+    if ($aulaId) { $aulaModel->atualizar($aulaId, $d); setFlash('success', 'Aula atualizada!'); }
+    else         { $aulaModel->criar($d);              setFlash('success', 'Aula criada!'); }
     redirect(APP_URL . "/admin/cursos.php?acao=detalhe&id=$id&tab=aulas");
 }
 
@@ -142,12 +121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'pergunt
     csrfCheck();
     $aval = $avalModel->porCurso($id);
     if (!$aval) { setFlash('error', 'Crie a avaliação primeiro.'); redirect(APP_URL . "/admin/cursos.php?acao=detalhe&id=$id&tab=avaliacao"); }
-    $pid = $avalModel->criarPergunta([
-        'avaliacao_id' => $aval['id'],
-        'enunciado'    => sanitize($_POST['enunciado']),
-        'pontos'       => (float)($_POST['pontos'] ?? 1),
-        'ordem'        => (int)($_POST['ordem'] ?? 1),
-    ]);
+    $pid = $avalModel->criarPergunta(['avaliacao_id' => $aval['id'], 'enunciado' => sanitize($_POST['enunciado']), 'pontos' => (float)($_POST['pontos'] ?? 1), 'ordem' => (int)($_POST['ordem'] ?? 1)]);
     $alternativas = $_POST['alternativas'] ?? [];
     $correta      = (int)($_POST['correta'] ?? 0);
     foreach ($alternativas as $idx => $texto) {
@@ -185,6 +159,38 @@ if ($acao === 'del_material' && $id && ($mid = (int)($_GET['mid'] ?? 0))) {
     redirect(APP_URL . "/admin/cursos.php?acao=detalhe&id=$id&tab=certificado");
 }
 
+/* ── SALVAR CERTIFICADO (modelo) ───────────── */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'certificado') {
+    csrfCheck();
+    $d = [
+        'nome_cert'      => sanitize($_POST['nome_cert']      ?? ''),
+        'instrutor'      => sanitize($_POST['instrutor']      ?? ''),
+        // DEPOIS (correto — preserva HTML do CKEditor):
+        'conteudo_prog'  => sanitize_html($_POST['conteudo_prog']  ?? ''),
+        'texto_frente'   => sanitize_html($_POST['texto_frente']   ?? ''),
+        'verso_conteudo' => sanitize_html($_POST['verso_conteudo'] ?? ''),
+        'ativar_verso'   => (int)($_POST['ativar_verso']      ?? 0),
+    ];
+    // Upload imagem frente
+    if (!empty($_FILES['imagem_frente']['name'])) {
+        $certDir = UPLOAD_PATH . '/certificados';
+        if (!is_dir($certDir)) mkdir($certDir, 0755, true);
+        $img = uploadFile($_FILES['imagem_frente'], $certDir, ALLOWED_IMAGE);
+        if ($img) $d['frente'] = $img;
+    }
+    // Upload imagem verso
+    if (!empty($_FILES['imagem_verso']['name'])) {
+        $certDir = UPLOAD_PATH . '/certificados';
+        if (!is_dir($certDir)) mkdir($certDir, 0755, true);
+        $img = uploadFile($_FILES['imagem_verso'], $certDir, ALLOWED_IMAGE);
+        if ($img) $d['verso'] = $img;
+    }
+    $certModel->salvarModelo($id, $d);
+    logAction('certificado.salvar', "Modelo certificado curso ID $id");
+    setFlash('success', 'Configurações do certificado salvas!');
+    redirect(APP_URL . "/admin/cursos.php?acao=detalhe&id=$id&tab=certificado");
+}
+
 /* ── DELETAR CURSO ─────────────────────────── */
 if ($acao === 'deletar' && $id) {
     $cursoModel->deletar($id);
@@ -207,6 +213,7 @@ $perguntas = $aval ? $avalModel->perguntas($aval['id']) : [];
 foreach ($perguntas as &$p) { $p['alternativas'] = $avalModel->alternativas($p['id']); }
 unset($p);
 $materiais = $id ? $matModel->porCurso($id) : [];
+$modelo    = $id ? $certModel->modelo($id) : null;
 
 // Para edição de aula
 $editAulaId = (int)($_GET['edit_aula'] ?? 0);
@@ -217,7 +224,7 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
 ?>
 
 <?php if ($acao === 'novo'): ?>
-<!-- ════ NOVO CURSO (formulário rápido) ════ -->
+<!-- ════ NOVO CURSO ════ -->
 <div class="page-header">
   <div>
     <h1>Novo Curso</h1>
@@ -251,10 +258,6 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
         <label class="form-label">Descrição</label>
         <textarea name="descricao" class="form-control" rows="3" placeholder="Descreva o objetivo do curso..."></textarea>
       </div>
-      <div class="col-md-6">
-        <label class="form-label">Instrutores</label>
-        <input type="text" name="instrutores" class="form-control" placeholder="Ex: Dr. João Silva, Dra. Maria Souza">
-      </div>
       <div class="col-md-3">
         <label class="form-label">Status</label>
         <select name="status" class="form-select"><option value="1">Ativo</option><option value="0">Inativo</option></select>
@@ -263,6 +266,10 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
         <label class="form-label">Imagem de Capa</label>
         <input type="file" name="imagem" class="form-control" accept="image/*">
       </div>
+    </div>
+    <div class="alert mt-3 mb-0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px;font-size:13px">
+      <i class="bi bi-info-circle-fill text-success me-2"></i>
+      <strong>Instrutores e Conteúdo Programático</strong> são configurados na aba <strong>Certificado</strong>, após criar o curso.
     </div>
     <hr class="my-3">
     <div class="d-flex gap-2">
@@ -296,28 +303,26 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
 
 <!-- ABAS -->
 <div class="course-tabs">
-  <a class="course-tab <?= $tab === 'config'    ? 'active' : '' ?>"
-     href="?acao=detalhe&id=<?= $id ?>&tab=config">
+  <a class="course-tab <?= $tab === 'config'      ? 'active' : '' ?>" href="?acao=detalhe&id=<?= $id ?>&tab=config">
     <i class="bi bi-gear-fill"></i> Configurações
   </a>
-  <a class="course-tab <?= $tab === 'aulas'     ? 'active' : '' ?>"
-     href="?acao=detalhe&id=<?= $id ?>&tab=aulas">
+  <a class="course-tab <?= $tab === 'aulas'       ? 'active' : '' ?>" href="?acao=detalhe&id=<?= $id ?>&tab=aulas">
     <i class="bi bi-play-circle-fill"></i> Aulas
     <span class="badge bg-primary ms-1" style="font-size:10px"><?= count($aulas) ?></span>
   </a>
-  <a class="course-tab <?= $tab === 'avaliacao' ? 'active' : '' ?>"
-     href="?acao=detalhe&id=<?= $id ?>&tab=avaliacao">
+  <a class="course-tab <?= $tab === 'avaliacao'   ? 'active' : '' ?>" href="?acao=detalhe&id=<?= $id ?>&tab=avaliacao">
     <i class="bi bi-patch-question-fill"></i> Avaliação
     <span class="badge bg-warning ms-1" style="font-size:10px"><?= count($perguntas) ?></span>
   </a>
-  <a class="course-tab <?= $tab === 'certificado' ? 'active' : '' ?>"
-     href="?acao=detalhe&id=<?= $id ?>&tab=certificado">
-    <i class="bi bi-award-fill"></i> Materiais & Certificado
+  <a class="course-tab <?= $tab === 'certificado' ? 'active' : '' ?>" href="?acao=detalhe&id=<?= $id ?>&tab=certificado">
+    <i class="bi bi-award-fill"></i> Certificado & Materiais
     <span class="badge bg-secondary ms-1" style="font-size:10px"><?= count($materiais) ?></span>
   </a>
 </div>
 
-<!-- ── ABA CONFIGURAÇÕES ──────────────────────── -->
+<!-- ═══════════════════════════════════════════
+     ABA: CONFIGURAÇÕES (sem instrutor/conteúdo)
+     ═══════════════════════════════════════════ -->
 <?php if ($tab === 'config'): ?>
 <div class="form-card">
   <form method="POST" enctype="multipart/form-data">
@@ -343,25 +348,21 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
         <label class="form-label">Descrição</label>
         <textarea name="descricao" class="form-control" rows="4"><?= e($curso['descricao'] ?? '') ?></textarea>
       </div>
-      <div class="col-md-5">
-        <label class="form-label">Instrutores</label>
-        <input type="text" name="instrutores" class="form-control" value="<?= e($curso['instrutores'] ?? '') ?>" placeholder="Separe por vírgula">
-      </div>
-      <div class="col-md-2">
+      <div class="col-md-3">
         <label class="form-label">Status</label>
         <select name="status" class="form-select">
           <option value="1" <?= $curso['status'] == 1 ? 'selected':'' ?>>Ativo</option>
           <option value="0" <?= $curso['status'] == 0 ? 'selected':'' ?>>Inativo</option>
         </select>
       </div>
-      <div class="col-md-2">
+      <div class="col-md-3">
         <label class="form-label">Avaliação</label>
         <select name="tem_avaliacao" class="form-select">
           <option value="0" <?= $curso['tem_avaliacao'] == 0 ? 'selected':'' ?>>Sem avaliação</option>
           <option value="1" <?= $curso['tem_avaliacao'] == 1 ? 'selected':'' ?>>Com avaliação</option>
         </select>
       </div>
-      <div class="col-md-2">
+      <div class="col-md-3">
         <label class="form-label">Nota Mínima (%)</label>
         <input type="number" name="nota_minima" class="form-control" min="0" max="100" value="<?= e($curso['nota_minima'] ?? 60) ?>">
       </div>
@@ -374,12 +375,11 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
         </div>
         <?php endif; ?>
       </div>
-      <div class="col-12">
-        <label class="form-label">Conteúdo Programático</label>
-        <textarea name="conteudo_programatico" class="form-control" rows="6"
-                  placeholder="Um tópico por linha — será exibido no verso do certificado"><?= e($curso['conteudo_programatico'] ?? '') ?></textarea>
-        <small class="text-muted">Um tópico por linha.</small>
-      </div>
+    </div>
+    <div class="alert mt-3 mb-0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;font-size:13px">
+      <i class="bi bi-award-fill text-warning me-2"></i>
+      <strong>Instrutores e Conteúdo Programático</strong> do certificado são configurados na aba
+      <a href="?acao=detalhe&id=<?= $id ?>&tab=certificado" class="fw-bold">Certificado & Materiais</a>.
     </div>
     <hr class="my-3">
     <button type="submit" class="btn btn-primary px-4">
@@ -388,10 +388,11 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
   </form>
 </div>
 
-<!-- ── ABA AULAS ──────────────────────────────── -->
+<!-- ═══════════════════════════════════════════
+     ABA: AULAS
+     ═══════════════════════════════════════════ -->
 <?php elseif ($tab === 'aulas'): ?>
 <div class="row g-3">
-  <!-- Formulário adicionar/editar aula -->
   <div class="col-md-4">
     <div class="form-card">
       <h6 class="mb-3">
@@ -402,12 +403,10 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
         <?= csrfField() ?>
         <input type="hidden" name="form" value="aula">
         <input type="hidden" name="aula_id" value="<?= $editAulaId ?>">
-
         <div class="mb-3">
           <label class="form-label">Título *</label>
           <input type="text" name="titulo" class="form-control" required value="<?= e($editAula['titulo'] ?? '') ?>">
         </div>
-
         <div class="row g-2 mb-3">
           <div class="col">
             <label class="form-label">Ordem</label>
@@ -421,8 +420,6 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
             </select>
           </div>
         </div>
-
-        <!-- Tipo de aula -->
         <?php
           $tipoAtual = '';
           if ($editAula) {
@@ -435,29 +432,25 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
             <div class="form-check flex-fill border rounded p-2 <?= $tipoAtual !== 'upload' ? 'border-primary bg-light' : '' ?>">
               <input class="form-check-input" type="radio" name="tipo_aula" id="tipoLink" value="link"
                      <?= $tipoAtual !== 'upload' ? 'checked' : '' ?> onchange="setTipoAula(this.value)">
-              <label class="form-check-label w-100 cursor-pointer" for="tipoLink">
+              <label class="form-check-label w-100" for="tipoLink">
                 <i class="bi bi-link-45deg text-primary"></i> Link de Vídeo
               </label>
             </div>
             <div class="form-check flex-fill border rounded p-2 <?= $tipoAtual === 'upload' ? 'border-success bg-light' : '' ?>">
               <input class="form-check-input" type="radio" name="tipo_aula" id="tipoUpload" value="upload"
                      <?= $tipoAtual === 'upload' ? 'checked' : '' ?> onchange="setTipoAula(this.value)">
-              <label class="form-check-label w-100 cursor-pointer" for="tipoUpload">
+              <label class="form-check-label w-100" for="tipoUpload">
                 <i class="bi bi-upload text-success"></i> Upload de Vídeo
               </label>
             </div>
           </div>
         </div>
-
-        <!-- Campo link -->
         <div id="campoLink" class="mb-3" <?= $tipoAtual === 'upload' ? 'style="display:none"' : '' ?>>
           <label class="form-label">URL do Vídeo</label>
           <input type="url" name="url_video" class="form-control" placeholder="https://youtube.com/watch?v=..."
                  value="<?= e($editAula && $tipoAtual !== 'upload' ? ($editAula['url_video'] ?? '') : '') ?>">
           <small class="text-muted">YouTube, Vimeo ou URL direta.</small>
         </div>
-
-        <!-- Campo upload -->
         <div id="campoUpload" class="mb-3" <?= $tipoAtual !== 'upload' ? 'style="display:none"' : '' ?>>
           <label class="form-label">Arquivo de Vídeo</label>
           <input type="file" name="video_file" class="form-control" accept="video/mp4,video/webm,video/ogg">
@@ -470,12 +463,10 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
           </div>
           <?php endif; ?>
         </div>
-
         <div class="mb-3">
           <label class="form-label">Descrição</label>
           <textarea name="descricao" class="form-control" rows="2"><?= e($editAula['descricao'] ?? '') ?></textarea>
         </div>
-
         <div class="d-flex gap-2">
           <button type="submit" class="btn btn-primary flex-grow-1">
             <i class="bi bi-check-lg me-1"></i><?= $editAula ? 'Salvar' : 'Adicionar' ?>
@@ -487,8 +478,6 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
       </form>
     </div>
   </div>
-
-  <!-- Lista de aulas -->
   <div class="col-md-8">
     <div class="data-card">
       <div class="data-card-header">
@@ -497,7 +486,7 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
       </div>
       <?php if ($aulas): ?>
       <?php foreach ($aulas as $a):
-        $isLocal = str_starts_with($a['url_video'] ?? '', 'local://');
+        $isLocal   = str_starts_with($a['url_video'] ?? '', 'local://');
         $tipoLabel = $isLocal ? 'upload' : ($a['url_video'] ? 'link' : '');
       ?>
       <div class="aula-item">
@@ -512,34 +501,28 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
         </div>
         <span class="badge-status badge-<?= $a['status'] ? 'ativo':'inativo' ?>"><?= $a['status'] ? 'Ativo':'Inativo' ?></span>
         <div class="d-flex gap-1 ms-2">
-          <a href="?acao=detalhe&id=<?= $id ?>&tab=aulas&edit_aula=<?= $a['id'] ?>"
-             class="btn btn-icon btn-outline-primary btn-sm" title="Editar">
-            <i class="bi bi-pencil"></i>
-          </a>
-          <a href="?acao=del_aula&id=<?= $id ?>&aid=<?= $a['id'] ?>"
-             class="btn btn-icon btn-outline-danger btn-sm"
-             data-confirm="Excluir a aula '<?= e($a['titulo']) ?>'?">
-            <i class="bi bi-trash"></i>
-          </a>
+          <a href="?acao=detalhe&id=<?= $id ?>&tab=aulas&edit_aula=<?= $a['id'] ?>" class="btn btn-icon btn-outline-primary btn-sm"><i class="bi bi-pencil"></i></a>
+          <a href="?acao=del_aula&id=<?= $id ?>&aid=<?= $a['id'] ?>" class="btn btn-icon btn-outline-danger btn-sm" data-confirm="Excluir a aula '<?= e($a['titulo']) ?>'?"><i class="bi bi-trash"></i></a>
         </div>
       </div>
       <?php endforeach; ?>
       <?php else: ?>
-      <div class="empty-state"><i class="bi bi-camera-video-off"></i><p>Nenhuma aula cadastrada.<br>Adicione a primeira aula ao lado.</p></div>
+      <div class="empty-state"><i class="bi bi-camera-video-off"></i><p>Nenhuma aula cadastrada.</p></div>
       <?php endif; ?>
     </div>
   </div>
 </div>
 
-<!-- ── ABA AVALIAÇÃO ──────────────────────────── -->
+<!-- ═══════════════════════════════════════════
+     ABA: AVALIAÇÃO
+     ═══════════════════════════════════════════ -->
 <?php elseif ($tab === 'avaliacao'): ?>
 <?php if (!$curso['tem_avaliacao']): ?>
 <div class="alert-crmv mb-4">
   <i class="bi bi-info-circle me-2"></i>
-  Este curso está configurado sem avaliação. Ative a opção "Com avaliação" na aba <strong>Configurações</strong> para gerenciar a avaliação aqui.
+  Este curso está sem avaliação. Ative "Com avaliação" na aba <strong>Configurações</strong>.
 </div>
 <?php endif; ?>
-
 <div class="row g-3">
   <div class="col-md-4">
     <div class="form-card mb-3">
@@ -562,9 +545,7 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
         <button type="submit" class="btn btn-primary w-100"><i class="bi bi-save me-1"></i>Salvar Configuração</button>
       </form>
     </div>
-
     <?php if ($aval): ?>
-    <!-- Formulário nova pergunta -->
     <div class="form-card">
       <h6 class="mb-3"><i class="bi bi-plus-circle me-2 text-success"></i>Nova Pergunta</h6>
       <form method="POST">
@@ -575,19 +556,13 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
           <textarea name="enunciado" class="form-control" rows="3" required placeholder="Digite a pergunta..."></textarea>
         </div>
         <div class="row g-2 mb-3">
-          <div class="col">
-            <label class="form-label">Pontos</label>
-            <input type="number" name="pontos" class="form-control" min="1" value="1">
-          </div>
-          <div class="col">
-            <label class="form-label">Ordem</label>
-            <input type="number" name="ordem" class="form-control" min="1" value="<?= count($perguntas)+1 ?>">
-          </div>
+          <div class="col"><label class="form-label">Pontos</label><input type="number" name="pontos" class="form-control" min="1" value="1"></div>
+          <div class="col"><label class="form-label">Ordem</label><input type="number" name="ordem" class="form-control" min="1" value="<?= count($perguntas)+1 ?>"></div>
         </div>
         <label class="form-label">Alternativas (marque a correta)</label>
         <?php for ($i = 0; $i < 4; $i++): ?>
         <div class="d-flex gap-2 mb-2 align-items-center">
-          <input type="radio" name="correta" value="<?= $i ?>" class="form-check-input mt-0" <?= $i === 0 ? 'checked' : '' ?> title="Correta">
+          <input type="radio" name="correta" value="<?= $i ?>" class="form-check-input mt-0" <?= $i === 0 ? 'checked':'' ?> title="Correta">
           <input type="text" name="alternativas[]" class="form-control form-control-sm" placeholder="Alternativa <?= chr(65+$i) ?>">
         </div>
         <?php endfor; ?>
@@ -596,7 +571,6 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
     </div>
     <?php endif; ?>
   </div>
-
   <div class="col-md-8">
     <div class="data-card">
       <div class="data-card-header">
@@ -612,9 +586,7 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
             <strong style="font-size:14px"><?= e($p['enunciado']) ?></strong>
             <small class="text-muted ms-2">(<?= $p['pontos'] ?> pt)</small>
           </div>
-          <a href="?acao=del_pergunta&id=<?= $id ?>&pid=<?= $p['id'] ?>&tab=avaliacao"
-             class="btn btn-icon btn-outline-danger btn-sm"
-             data-confirm="Excluir esta pergunta?"><i class="bi bi-trash"></i></a>
+          <a href="?acao=del_pergunta&id=<?= $id ?>&pid=<?= $p['id'] ?>&tab=avaliacao" class="btn btn-icon btn-outline-danger btn-sm" data-confirm="Excluir esta pergunta?"><i class="bi bi-trash"></i></a>
         </div>
         <div class="d-flex flex-column gap-1 ps-4">
           <?php foreach ($p['alternativas'] as $alt): ?>
@@ -633,11 +605,15 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
   </div>
 </div>
 
-<!-- ── ABA CERTIFICADO & MATERIAIS ───────────── -->
+<!-- ═══════════════════════════════════════════
+     ABA: CERTIFICADO & MATERIAIS (estilo Moodle)
+     ═══════════════════════════════════════════ -->
 <?php elseif ($tab === 'certificado'): ?>
 <div class="row g-3">
+
+  <!-- ── Coluna esquerda: Materiais ── -->
   <div class="col-md-4">
-    <div class="form-card">
+    <div class="form-card mb-3">
       <h6 class="mb-3"><i class="bi bi-cloud-upload me-2 text-primary"></i>Enviar Material Didático</h6>
       <form method="POST" enctype="multipart/form-data">
         <?= csrfField() ?>
@@ -655,29 +631,43 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
       </form>
     </div>
 
-    <div class="form-card mt-3">
-      <h6 class="mb-2"><i class="bi bi-award me-2 text-warning"></i>Certificado</h6>
-      <p class="text-muted" style="font-size:13px">
-        O certificado é gerado automaticamente quando o aluno conclui o curso (e passa na avaliação, se houver).
-        Edite o <strong>Conteúdo Programático</strong> e os <strong>Instrutores</strong> na aba Configurações para personalizar o verso do certificado.
-      </p>
-      <?php
-        $certs = $certModel->doCurso($id);
-      ?>
-      <div class="d-flex align-items-center gap-2 p-2 rounded bg-light">
-        <i class="bi bi-award-fill text-warning fs-4"></i>
-        <div><strong><?= count($certs) ?></strong> certificado(s) emitido(s)</div>
+    <!-- Resumo certificados emitidos -->
+    <div class="form-card">
+      <h6 class="mb-2"><i class="bi bi-award me-2 text-warning"></i>Certificados Emitidos</h6>
+      <?php $certs = $certModel->doCurso($id); ?>
+      <div class="d-flex align-items-center gap-2 p-3 rounded" style="background:#fffbeb">
+        <i class="bi bi-award-fill text-warning fs-3"></i>
+        <div>
+          <div style="font-size:22px;font-weight:700;line-height:1"><?= count($certs) ?></div>
+          <div style="font-size:12px;color:#92400e">certificado(s) emitido(s)</div>
+        </div>
       </div>
+      <?php if ($certs): ?>
+      <div class="mt-2" style="max-height:160px;overflow-y:auto">
+        <?php foreach (array_slice($certs, 0, 5) as $c): ?>
+        <div style="font-size:12px;padding:4px 0;border-bottom:1px solid #f3f4f6">
+          <i class="bi bi-person-check text-success me-1"></i><?= e($c['aluno_nome']) ?>
+          <span class="text-muted ms-1"><?= dataBR($c['emitido_em']) ?></span>
+        </div>
+        <?php endforeach; ?>
+        <?php if (count($certs) > 5): ?>
+        <div style="font-size:12px;color:#6b7280;padding-top:4px">… e mais <?= count($certs)-5 ?></div>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
     </div>
   </div>
 
+  <!-- ── Coluna direita: Configuração do Certificado (estilo Moodle) ── -->
   <div class="col-md-8">
-    <div class="data-card">
+
+    <!-- Materiais lista -->
+    <?php if ($materiais): ?>
+    <div class="data-card mb-3">
       <div class="data-card-header">
         <h6 class="data-card-title"><i class="bi bi-files me-2"></i>Materiais Didáticos</h6>
         <span class="badge bg-primary"><?= count($materiais) ?> arquivo(s)</span>
       </div>
-      <?php if ($materiais): ?>
       <div class="table-responsive">
         <table class="table table-ead">
           <thead><tr><th>Título</th><th>Tipo</th><th>Tamanho</th><th>Ações</th></tr></thead>
@@ -688,20 +678,166 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
             <td><span class="badge bg-secondary text-uppercase"><?= e($m['tipo']) ?></span></td>
             <td><?= $m['tamanho'] ? round($m['tamanho']/1024) . ' KB' : '—' ?></td>
             <td>
-              <a href="<?= APP_URL ?>/public/uploads/materiais/<?= e($m['arquivo']) ?>" target="_blank"
-                 class="btn btn-icon btn-outline-success btn-sm"><i class="bi bi-download"></i></a>
-              <a href="?acao=del_material&id=<?= $id ?>&mid=<?= $m['id'] ?>&tab=certificado"
-                 class="btn btn-icon btn-outline-danger btn-sm"
-                 data-confirm="Remover '<?= e($m['titulo']) ?>'?"><i class="bi bi-trash"></i></a>
+              <a href="<?= APP_URL ?>/public/uploads/materiais/<?= e($m['arquivo']) ?>" target="_blank" class="btn btn-icon btn-outline-success btn-sm"><i class="bi bi-download"></i></a>
+              <a href="?acao=del_material&id=<?= $id ?>&mid=<?= $m['id'] ?>&tab=certificado" class="btn btn-icon btn-outline-danger btn-sm" data-confirm="Remover '<?= e($m['titulo']) ?>'?"><i class="bi bi-trash"></i></a>
             </td>
           </tr>
           <?php endforeach; ?>
           </tbody>
         </table>
       </div>
-      <?php else: ?>
-      <div class="empty-state"><i class="bi bi-folder-x"></i><p>Nenhum material enviado.</p></div>
-      <?php endif; ?>
+    </div>
+    <?php endif; ?>
+
+    <!-- ══ CONFIGURAÇÃO DO CERTIFICADO ══ -->
+    <div class="data-card">
+      <div class="data-card-header">
+        <h6 class="data-card-title"><i class="bi bi-award-fill me-2 text-warning"></i>Configurações do Certificado</h6>
+      </div>
+
+      <form method="POST" enctype="multipart/form-data" style="padding:20px">
+        <?= csrfField() ?>
+        <input type="hidden" name="form" value="certificado">
+
+        <!-- ─ GERAL ─ -->
+        <div class="cert-section">
+          <div class="cert-section-title">
+            <i class="bi bi-info-circle-fill me-2"></i>Geral
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Nome do Certificado</label>
+            <input type="text" name="nome_cert" class="form-control"
+                   value="<?= e($modelo['nome_cert'] ?? $curso['nome']) ?>"
+                   placeholder="Ex: Certificado de Conclusão — <?= e($curso['nome']) ?>">
+            <small class="text-muted">Nome exibido no topo do certificado. Deixe em branco para usar o nome do curso.</small>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Instrutor(es)</label>
+            <input type="text" name="instrutor" class="form-control"
+                   value="<?= e($modelo['instrutor'] ?? $curso['instrutores'] ?? '') ?>"
+                   placeholder="Ex: Dr. João Silva, CRMV-TO 1234 / Dra. Maria Souza">
+            <small class="text-muted">Separe múltiplos instrutores por barra ( / ) ou vírgula.</small>
+          </div>
+        </div>
+
+        <!-- ─ FRENTE DO CERTIFICADO ─ -->
+        <div class="cert-section">
+          <div class="cert-section-title">
+            <i class="bi bi-file-earmark-image-fill me-2"></i>Frente do Certificado
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Imagem de Fundo (Frente)</label>
+            <?php if (!empty($modelo['frente'])): ?>
+            <div class="cert-preview-img mb-2">
+              <img src="<?= APP_URL ?>/public/uploads/certificados/<?= e($modelo['frente']) ?>"
+                   alt="Frente atual" class="rounded border" style="max-height:120px">
+              <div style="font-size:12px;color:#6b7280;margin-top:4px">
+                <i class="bi bi-check-circle text-success me-1"></i>Imagem atual: <?= e($modelo['frente']) ?>
+              </div>
+            </div>
+            <?php endif; ?>
+            <input type="file" name="imagem_frente" class="form-control" accept="image/*">
+            <small class="text-muted">
+              Tipos aceitos: JPG, PNG, SVG. Tamanho recomendado: <strong>1122 × 794px</strong> (A4 paisagem, 96dpi).<br>
+              <?php if (!empty($modelo['frente'])): ?>Envie um novo arquivo para substituir a imagem atual.<?php endif; ?>
+            </small>
+          </div>
+
+          <div class="mb-0">
+            <label class="form-label fw-semibold">
+              Texto da Frente
+              <small class="text-muted fw-normal ms-1">— variáveis disponíveis:</small>
+            </label>
+            <div class="cert-variaveis mb-2">
+              <span class="cert-var" onclick="inserirVar('texto_frente','[NOME]')">[NOME]</span>
+              <span class="cert-var" onclick="inserirVar('texto_frente','[CURSO]')">[CURSO]</span>
+              <span class="cert-var" onclick="inserirVar('texto_frente','[CARGA_HORARIA]')">[CARGA_HORARIA]</span>
+              <span class="cert-var" onclick="inserirVar('texto_frente','[DATA]')">[DATA]</span>
+              <span class="cert-var" onclick="inserirVar('texto_frente','[CRMV]')">[CRMV]</span>
+            </div>
+            <textarea name="texto_frente" id="texto_frente" class="form-control auto-resize" rows="5"
+                      placeholder="Deixe em branco para usar o texto padrão gerado automaticamente."><?= htmlspecialchars($modelo['texto_frente'] ?? '', ENT_QUOTES) ?></textarea>
+            <small class="text-muted">
+              Texto HTML exibido sobre a imagem de fundo. As variáveis são substituídas automaticamente.
+              Deixe em branco para usar o layout padrão do sistema.
+            </small>
+          </div>
+        </div>
+
+        <!-- ─ VERSO DO CERTIFICADO ─ -->
+        <div class="cert-section">
+          <div class="cert-section-title">
+            <i class="bi bi-file-earmark-text-fill me-2"></i>Verso do Certificado
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Ativar Verso do Certificado</label>
+            <div class="d-flex gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="ativar_verso" id="versoNao" value="0"
+                       <?= ($modelo['ativar_verso'] ?? 0) == 0 ? 'checked':'' ?>
+                       onchange="toggleVerso(0)">
+                <label class="form-check-label" for="versoNao">Não</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="radio" name="ativar_verso" id="versoSim" value="1"
+                       <?= ($modelo['ativar_verso'] ?? 0) == 1 ? 'checked':'' ?>
+                       onchange="toggleVerso(1)">
+                <label class="form-check-label" for="versoSim">Sim</label>
+              </div>
+            </div>
+          </div>
+
+          <div id="blocoVerso" <?= ($modelo['ativar_verso'] ?? 0) == 0 ? 'style="display:none"' : '' ?>>
+
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Imagem de Fundo (Verso)</label>
+              <?php if (!empty($modelo['verso'])): ?>
+              <div class="cert-preview-img mb-2">
+                <img src="<?= APP_URL ?>/public/uploads/certificados/<?= e($modelo['verso']) ?>"
+                     alt="Verso atual" class="rounded border" style="max-height:120px">
+                <div style="font-size:12px;color:#6b7280;margin-top:4px">
+                  <i class="bi bi-check-circle text-success me-1"></i>Imagem atual: <?= e($modelo['verso']) ?>
+                </div>
+              </div>
+              <?php endif; ?>
+              <input type="file" name="imagem_verso" class="form-control" accept="image/*">
+              <small class="text-muted">
+                Tipos aceitos: JPG, PNG, SVG. Tamanho recomendado: <strong>1122 × 794px</strong>.
+                <?php if (!empty($modelo['verso'])): ?>Envie um novo arquivo para substituir.<?php endif; ?>
+              </small>
+            </div>
+
+            <div class="mb-0">
+              <label class="form-label fw-semibold">Conteúdo Programático</label>
+              <small class="text-muted d-block mb-2">
+                Este conteúdo será exibido no verso do certificado.<br>
+                Use as ferramentas do editor para <strong>negrito</strong>, <em>itálico</em>, tamanho de fonte, listas com marcadores e muito mais.
+              </small>
+              <!-- CKEditor será inicializado aqui -->
+              <textarea name="conteudo_prog" id="conteudo_prog"
+                        rows="10"><?= htmlspecialchars($modelo['conteudo_prog'] ?? $curso['conteudo_programatico'] ?? '', ENT_QUOTES) ?></textarea>
+            </div>
+
+          </div><!-- /blocoVerso -->
+        </div>
+
+        <!-- ─ BOTÃO SALVAR ─ -->
+        <div class="d-flex gap-2 mt-3">
+          <button type="submit" class="btn btn-warning px-4 fw-semibold">
+            <i class="bi bi-save me-1"></i>Salvar Configurações do Certificado
+          </button>
+          <?php if (!empty($certs)): ?>
+          <a href="<?= APP_URL ?>/aluno/certificado.php?curso_id=<?= $id ?>" target="_blank"
+             class="btn btn-outline-secondary">
+            <i class="bi bi-eye me-1"></i>Pré-visualizar
+          </a>
+          <?php endif; ?>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -763,17 +899,12 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
           <span class="curso-meta-tag" style="background:#fef3c7;color:#b45309"><i class="bi bi-patch-question"></i>Avaliação</span>
           <?php endif; ?>
         </div>
-        <?php if (!empty($c['instrutores'])): ?>
-        <div class="mt-2"><small class="text-muted"><i class="bi bi-person me-1"></i><?= e($c['instrutores']) ?></small></div>
-        <?php endif; ?>
       </div>
       <div class="curso-admin-actions">
-        <!-- Botão principal: abre detalhe do curso -->
         <a href="?acao=detalhe&id=<?= $c['id'] ?>" class="btn btn-primary btn-sm flex-grow-1">
           <i class="bi bi-folder2-open me-1"></i>Gerenciar
         </a>
-        <a href="?acao=deletar&id=<?= $c['id'] ?>"
-           class="btn btn-icon btn-outline-danger btn-sm"
+        <a href="?acao=deletar&id=<?= $c['id'] ?>" class="btn btn-icon btn-outline-danger btn-sm"
            data-confirm="Excluir '<?= e($c['nome']) ?>'? Isso removerá aulas, materiais e matrículas!">
           <i class="bi bi-trash"></i>
         </a>
@@ -789,24 +920,176 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
   <a href="?acao=novo" class="btn btn-primary btn-sm mt-2"><i class="bi bi-plus me-1"></i>Criar primeiro curso</a>
 </div>
 <?php endif; ?>
-
 <?php if ($pag['pages'] > 1): ?>
 <nav class="mt-4"><ul class="pagination pagination-sm justify-content-center">
   <?php for ($i = 1; $i <= $pag['pages']; $i++): ?>
-  <li class="page-item <?= $i == $page ? 'active':'' ?>">
-    <a class="page-link" href="?busca=<?= urlencode($busca) ?>&tipo=<?= $tipo ?>&p=<?= $i ?>"><?= $i ?></a>
-  </li>
+  <li class="page-item <?= $i == $page ? 'active':'' ?>"><a class="page-link" href="?busca=<?= urlencode($busca) ?>&tipo=<?= $tipo ?>&p=<?= $i ?>"><?= $i ?></a></li>
   <?php endfor; ?>
 </ul></nav>
 <?php endif; ?>
-
 <?php endif; ?>
 
+<!-- ═══════════════════════════════════════════════════════════
+     SCRIPTS — carregados após todo o HTML
+     ═══════════════════════════════════════════════════════════ -->
+
+<!-- 1. CKEditor 4 full: carregado PRIMEIRO, antes de qualquer uso -->
+<script src="https://cdn.ckeditor.com/4.22.1/full/ckeditor.js"></script>
+
+<!-- 2. Lógica da página: só roda depois que o CKEditor já está disponível -->
 <script>
+/* ── Utilitários de formulário ────────────────────────────────── */
 function setTipoAula(tipo) {
   document.getElementById('campoLink').style.display   = tipo === 'link'   ? '' : 'none';
   document.getElementById('campoUpload').style.display = tipo === 'upload' ? '' : 'none';
 }
+
+function inserirVar(fieldId, variavel) {
+  var el = document.getElementById(fieldId);
+  if (!el) return;
+  var s  = el.selectionStart, e = el.selectionEnd;
+  el.value = el.value.slice(0, s) + variavel + el.value.slice(e);
+  el.focus();
+  el.selectionStart = el.selectionEnd = s + variavel.length;
+}
+
+/* ── Auto-resize para textarea.auto-resize ────────────────────── */
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('textarea.auto-resize').forEach(function (ta) {
+    ta.style.resize    = 'vertical';
+    ta.style.minHeight = '120px';
+    ta.style.overflowY = 'auto';
+
+    function grow() {
+      if (ta.dataset.userResized === '1') return;
+      ta.style.height    = 'auto';
+      ta.style.height    = (ta.scrollHeight + 2) + 'px';
+      ta.style.overflowY = 'hidden';
+    }
+    grow();
+
+    ta.addEventListener('input', function () {
+      this.dataset.userResized = '0';
+      grow.call(this);
+    });
+
+    ta.addEventListener('mousedown', function () {
+      var self = this, startH = self.offsetHeight;
+      function onUp() {
+        if (self.offsetHeight !== startH) {
+          self.dataset.userResized = '1';
+          self.style.overflowY     = 'auto';
+          self.style.height        = self.offsetHeight + 'px';
+        }
+        document.removeEventListener('mouseup', onUp);
+      }
+      document.addEventListener('mouseup', onUp);
+    });
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════
+   CKEditor — inicialização controlada
+   ══════════════════════════════════════════════════════════════
+   PROBLEMAS ANTERIORES:
+   1. Script separado do CDN: funções chamavam CKEDITOR antes
+      de ele estar disponível → editor nunca aparecia.
+   2. Textarea dentro de display:none: CKEditor não consegue
+      medir/renderizar → editor some.
+   3. contentsCss como array de strings CSS: CKEditor 4 espera
+      URL(s) → erro silencioso bloqueava tudo.
+
+   SOLUÇÃO:
+   • CDN carregado antes deste script (acima).
+   • initCKEditor() chamada pelo DOMContentLoaded OU pelo
+     toggleVerso(1) — o que ocorrer quando o bloco estiver visível.
+   • Flag _ckReady evita dupla inicialização.
+   ══════════════════════════════════════════════════════════════ */
+var _ckReady = false;
+
+function initCKEditor() {
+  /* Só existe na aba certificado */
+  var el = document.getElementById('conteudo_prog');
+  if (!el) return;
+
+  /* Evita dupla inicialização */
+  if (_ckReady) return;
+
+  /* Destroi instância anterior se houver (troca de aba sem reload) */
+  if (CKEDITOR.instances && CKEDITOR.instances['conteudo_prog']) {
+    CKEDITOR.instances['conteudo_prog'].destroy(true);
+  }
+
+  CKEDITOR.replace('conteudo_prog', {
+
+    /* Aceita todo HTML: <ul> <li> <ol> <p> <strong> etc. */
+    allowedContent: true,
+
+    /* Resize manual */
+    resize_enabled: true,
+    resize_dir:     'vertical',
+
+    /* AutoGrow */
+    extraPlugins:        'autogrow',
+    autoGrow_onStartup:  true,
+    autoGrow_minHeight:  200,
+    autoGrow_maxHeight:  520,
+    autoGrow_bottomSpace: 0,
+
+    /* Remove plugins não usados */
+    removePlugins: 'image,flash,iframe,forms,pagebreak',
+
+    language: 'pt-br',
+
+    toolbar: [
+      { name: 'styles',      items: ['Format', 'FontSize'] },
+      { name: 'basicstyles', items: ['Bold', 'Italic', 'Underline', 'Strike', '-', 'RemoveFormat'] },
+      { name: 'paragraph',   items: ['NumberedList', 'BulletedList', '-', 'Outdent', 'Indent', '-', 'JustifyLeft', 'JustifyCenter', 'JustifyRight'] },
+      { name: 'insert',      items: ['HorizontalRule'] },
+      '/',
+      { name: 'clipboard',   items: ['Undo', 'Redo'] },
+      { name: 'tools',       items: ['Maximize', 'Source'] }
+    ],
+
+    /* String CSS única — NÃO array de CSS inline (quebrava CKEditor 4) */
+    contentsCss: 'body{font-family:Arial,sans-serif;font-size:13px;line-height:1.6;margin:12px}ul{padding-left:22px;margin-bottom:10px;list-style-type:disc}ol{padding-left:22px;margin-bottom:10px;list-style-type:decimal}li{margin-bottom:4px}p{margin-bottom:8px}'
+  });
+
+  /* Sincroniza valor no submit de qualquer form */
+  document.querySelectorAll('form').forEach(function (form) {
+    form.addEventListener('submit', function () {
+      if (CKEDITOR.instances && CKEDITOR.instances['conteudo_prog']) {
+        document.getElementById('conteudo_prog').value =
+          CKEDITOR.instances['conteudo_prog'].getData();
+      }
+    });
+  });
+
+  _ckReady = true;
+}
+
+/* Controla visibilidade do bloco verso E inicializa o editor */
+function toggleVerso(ativar) {
+  var bloco = document.getElementById('blocoVerso');
+  if (!bloco) return;
+  bloco.style.display = ativar ? '' : 'none';
+
+  /* Inicializa o CKEditor somente quando o bloco fica visível */
+  if (ativar) initCKEditor();
+}
+
+/* Ao carregar a página: inicializa se o verso já estiver ativo */
+document.addEventListener('DOMContentLoaded', function () {
+  var el    = document.getElementById('conteudo_prog');
+  if (!el) return; /* não é a aba certificado */
+
+  var bloco = document.getElementById('blocoVerso');
+
+  /* blocoVerso visível = verso já estava ativado (salvo como Sim) */
+  if (!bloco || bloco.style.display !== 'none') {
+    initCKEditor();
+  }
+});
 </script>
 
 <?php include __DIR__ . '/../app/views/layouts/admin_footer.php'; ?>
