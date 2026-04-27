@@ -1,7 +1,11 @@
 <?php
 /**
- * aluno/avaliacao.php — CRMV-TO EAD
- * Corrigido: tratamento de erros, transação DB, conclusão de matrícula
+ * aluno/avaliacao.php — com controle de tentativas extras
+ *
+ * ALTERAÇÕES em relação ao original:
+ *   • $podeRealizar agora usa $avalModel->podeRealizar() — considera extras
+ *   • Exibe badge informativo quando o aluno tem tentativa extra disponível
+ *   • Restante permanece IDÊNTICO ao original
  */
 require_once __DIR__ . '/../app/bootstrap.php';
 authCheck('aluno');
@@ -21,7 +25,7 @@ if (!$curso || !$mat || $mat['status'] === 'cancelada') {
 }
 
 // Verificar se o aluno completou todas as aulas antes de acessar a avaliação
-$aulaModel = new AulaModel();
+$aulaModel  = new AulaModel();
 $totalAulas = $aulaModel->totalPorCurso($cursoId);
 $assistidas = count($aulaModel->assistidas($user['id'], $cursoId));
 if ($totalAulas > 0 && $assistidas < $totalAulas) {
@@ -35,9 +39,13 @@ if (!$avaliacao) {
     redirect(APP_URL . '/aluno/curso.php?id=' . $cursoId);
 }
 
+// ── VERIFICAÇÃO DE PERMISSÃO (agora considera tentativas extras) ──────────
 $tentativas      = $avalModel->tentativasAluno($user['id'], $avaliacao['id']);
 $ultimaTentativa = $avalModel->ultimaTentativa($user['id'], $avaliacao['id']);
-$podeRealizar    = $tentativas < $avaliacao['tentativas'];
+$extrasDisp      = $avalModel->tentativasExtrasDisponiveis($user['id'], $avaliacao['id']);
+
+// podeRealizar() encapsula: tentativas normais disponíveis OU extras disponíveis
+$podeRealizar = $avalModel->podeRealizar($user['id'], $avaliacao['id'], (int)$avaliacao['tentativas']);
 
 /* ── SUBMISSÃO DA AVALIAÇÃO ─────────────────────── */
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $podeRealizar) {
@@ -77,6 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $podeRealizar) {
         $nota     = $totalPts > 0 ? round(($acertos / $totalPts) * 100, 2) : 0;
         $aprovado = $nota >= (float)$curso['nota_minima'];
 
+        // registrarTentativa() já cuida de marcar a extra como utilizada internamente
         $tentId = $avalModel->registrarTentativa($user['id'], $avaliacao['id'], $nota, $aprovado);
         if (!$tentId) throw new Exception('Falha ao registrar tentativa.');
 
@@ -107,13 +116,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $podeRealizar) {
     }
 }
 
+// Recarrega estado atualizado após possível POST
 $perguntas = $avalModel->perguntas($avaliacao['id']);
-foreach ($perguntas as &$p) { $p['alternativas'] = $avalModel->alternativas($p['id']); }
+foreach ($perguntas as &$p) {
+    $p['alternativas'] = $avalModel->alternativas($p['id']);
+}
 unset($p);
 
 $tentativas      = $avalModel->tentativasAluno($user['id'], $avaliacao['id']);
 $ultimaTentativa = $avalModel->ultimaTentativa($user['id'], $avaliacao['id']);
-$podeRealizar    = $tentativas < $avaliacao['tentativas'];
+$extrasDisp      = $avalModel->tentativasExtrasDisponiveis($user['id'], $avaliacao['id']);
+$podeRealizar    = $avalModel->podeRealizar($user['id'], $avaliacao['id'], (int)$avaliacao['tentativas']);
 
 $pageTitle = 'Avaliação — ' . $curso['nome'];
 include __DIR__ . '/../app/views/layouts/aluno_header.php';
@@ -136,7 +149,15 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
     <strong>Última tentativa:</strong> Nota <?= $ultimaTentativa['nota'] ?>%
     — <?= $ultimaTentativa['aprovado'] ? '<span class="fw-bold">Aprovado ✓</span>' : 'Não aprovado' ?>
     — <?= dataBR($ultimaTentativa['realizado_em']) ?>
-    <br><small>Tentativas utilizadas: <?= $tentativas ?> / <?= $avaliacao['tentativas'] ?></small>
+    <br>
+    <small>
+      Tentativas utilizadas: <?= $tentativas ?> / <?= $avaliacao['tentativas'] ?>
+      <?php if ($extrasDisp > 0): ?>
+        · <span class="text-primary fw-semibold">
+            <i class="bi bi-plus-circle me-1"></i><?= $extrasDisp ?> nova(s) tentativa(s) liberada(s) pelo administrador
+          </span>
+      <?php endif; ?>
+    </small>
   </div>
   <?php if ($ultimaTentativa['aprovado']): ?>
   <a href="<?= APP_URL ?>/aluno/certificado.php?curso_id=<?= $cursoId ?>" class="btn btn-success btn-sm">
@@ -159,6 +180,17 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
 <?php else: ?>
 <div class="row justify-content-center">
   <div class="col-lg-8">
+
+    <?php if ($extrasDisp > 0 && $tentativas >= $avaliacao['tentativas']): ?>
+    <div class="alert alert-primary d-flex align-items-center gap-2 mb-4">
+      <i class="bi bi-unlock-fill fs-5"></i>
+      <div>
+        <strong>Nova tentativa liberada!</strong>
+        O administrador concedeu <?= $extrasDisp === 1 ? 'uma nova tentativa' : "$extrasDisp novas tentativas" ?> para você refazer esta avaliação.
+      </div>
+    </div>
+    <?php endif; ?>
+
     <?php if (!empty($avaliacao['descricao'])): ?>
     <div class="alert alert-info mb-4">
       <i class="bi bi-info-circle me-2"></i><?= e($avaliacao['descricao']) ?>
@@ -167,7 +199,13 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
 
     <div class="d-flex justify-content-between mb-3">
       <small class="text-muted"><?= count($perguntas) ?> questão(ões) · Mínimo: <?= $curso['nota_minima'] ?>%</small>
-      <small class="text-muted">Tentativas restantes: <?= $avaliacao['tentativas'] - $tentativas ?></small>
+      <small class="text-muted">
+        <?php
+        $restantesNormais = max(0, $avaliacao['tentativas'] - $tentativas);
+        $totalRestantes   = $restantesNormais + $extrasDisp;
+        echo "Tentativas restantes: $totalRestantes";
+        ?>
+      </small>
     </div>
 
     <form method="POST" id="formAvaliacao">

@@ -1,0 +1,203 @@
+
+
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+
+body { font-family: Arial; font-size: 12px; }
+
+/* TITULO */
+.titulo {
+    text-align: center;
+    font-size: 20px;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.sub {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+/* TABELAS */
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 25px;
+}
+
+th {
+    background: #1f4e78;
+    color: #fff;
+    padding: 8px;
+    border: 1px solid #000;
+}
+
+td {
+    padding: 6px;
+    border: 1px solid #000;
+}
+
+/* SECOES */
+.section {
+    background: #d9e1f2;
+    font-weight: bold;
+}
+
+/* CORES SLA */
+.alto  { background: #f8d7da; }
+.medio { background: #fff3cd; }
+.baixo { background: #d4edda; }
+
+.label {
+    font-weight: bold;
+    background: #f2f2f2;
+    width: 200px;
+}
+
+.texto {
+    height: 60px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="titulo">RELATÓRIO COMPLETO DO PROCESSO</div>
+<div class="sub">Gerado em: 23/03/2026 16:47:08</div>
+
+
+
+<!-- ================= DADOS DO PROCESSO ================= -->
+<table>
+<tr>
+    <td class="section" colspan="4">DADOS DO PROCESSO</td>
+</tr>
+
+<tr>
+    <td class="label">Número</td>
+    <td>LIC-2024-003</td>
+
+    <td class="label">Tipo</td>
+    <td>Compra</td>
+</tr>
+
+<tr>
+    <td class="label">Status</td>
+    <td class="medio"><b>EM ANDAMENTO</b></td>
+
+    <td class="label">Setor Atual</td>
+    <td>Compras</td>
+</tr>
+
+<tr class="alto">
+    <td class="label">Dias no Setor</td>
+    <td>21 dias</td>
+
+    <td class="label">Data de Criação</td>
+    <td>02/03/2026 23:50:33</td>
+</tr>
+
+<tr>
+    <td class="label">Criado por</td>
+    <td colspan="3">IAN LEANDRO CARDOSO FORMIGA</td>
+</tr>
+
+</table>
+
+<!-- ================= ASSUNTO ================= -->
+<table>
+<tr><td class="section">ASSUNTO</td></tr>
+<tr><td class="texto">Processo de Tonner</td></tr>
+</table>
+
+<!-- ================= DESCRIÇÃO ================= -->
+<table>
+<tr><td class="section">DESCRIÇÃO</td></tr>
+<tr><td class="texto">Processo para aquisição de tonner</td></tr>
+</table>
+
+
+
+<!-- ================= HISTÓRICO ================= -->
+
+
+<table>
+
+<tr>
+    <td class="section" colspan="6">HISTÓRICO DE TRAMITAÇÕES</td>
+</tr>
+
+<tr>
+    <th>Setor</th>
+    <th>Usuário</th>
+    <th>Entrada</th>
+    <th>Saída</th>
+    <th>Dias</th>
+    <th>Observação</th>
+</tr>
+
+
+
+<tr class="alto">
+    <td>Compras</td>
+    <td>IAN LEANDRO CARDOSO FORMIGA</td>
+    <td>02/03/2026 23:52:26</td>
+    <td></td>
+    <td style="text-align:center">21</td>
+    <td></td>
+</tr>
+
+
+
+<tr class="baixo">
+    <td>Setor Solicitante</td>
+    <td>IAN LEANDRO CARDOSO FORMIGA</td>
+    <td>02/03/2026 23:52:03</td>
+    <td>02/03/2026 23:52:26</td>
+    <td style="text-align:center">0</td>
+    <td>Quantidade excedida</td>
+</tr>
+
+
+
+<tr class="baixo">
+    <td>Compras</td>
+    <td>IAN LEANDRO CARDOSO FORMIGA</td>
+    <td>02/03/2026 23:51:38</td>
+    <td>02/03/2026 23:52:03</td>
+    <td style="text-align:center">0</td>
+    <td></td>
+</tr>
+
+
+
+<tr class="baixo">
+    <td>Setor Solicitante</td>
+    <td>IAN LEANDRO CARDOSO FORMIGA</td>
+    <td>02/03/2026 23:50:49</td>
+    <td>02/03/2026 23:51:38</td>
+    <td style="text-align:center">0</td>
+    <td></td>
+</tr>
+
+
+
+<tr class="baixo">
+    <td>Protocolo</td>
+    <td>IAN LEANDRO CARDOSO FORMIGA</td>
+    <td>02/03/2026 23:50:34</td>
+    <td>02/03/2026 23:50:49</td>
+    <td style="text-align:center">0</td>
+    <td>Processo autuado no Protocolo.</td>
+</tr>
+
+
+
+</table>
+
+</body>
+</html>
+

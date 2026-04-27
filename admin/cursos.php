@@ -542,6 +542,14 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
           <label class="form-label">Tentativas Permitidas</label>
           <input type="number" name="tentativas" class="form-control" min="1" max="10" value="<?= e($aval['tentativas'] ?? 1) ?>">
         </div>
+
+        <?php if ($aval): ?>
+        <a href="<?= APP_URL ?>/admin/tentativas.php?curso_id=<?= $id ?>"
+          class="btn btn-outline-primary w-100 mt-2">
+          <i class="bi bi-clipboard2-check me-1"></i>Gerenciar Tentativas
+        </a>
+        <?php endif; ?>
+
         <button type="submit" class="btn btn-primary w-100"><i class="bi bi-save me-1"></i>Salvar Configuração</button>
       </form>
     </div>
