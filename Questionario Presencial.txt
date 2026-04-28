@@ -1,0 +1,46 @@
+1. O conteúdo apresentado e o material didático (material complementar, recursos de mídia, etc) utilizado facilitou o aprendizado?
+
+1. O conteúdo apresentado e o material didático (material complementar, recursos de mídia, etc) utilizado facilitou o aprendizado?<i class="icon fa fa-circle-exclamation text-danger fa-fw ms-2" title="Campo obrigatório" role="img" aria-label="Campo obrigatório"></i>
+Não selecionado
+1 - Ruim
+2 - Regular
+3 - Bom
+4 - Muito bom
+5 – Excelente
+2. Qual o seu nível de satisfação com o treinamento de um modo geral?
+
+2. Qual o seu nível de satisfação com o treinamento de um modo geral?<i class="icon fa fa-circle-exclamation text-danger fa-fw ms-2" title="Campo obrigatório" role="img" aria-label="Campo obrigatório"></i>
+Não selecionado
+1 - Ruim
+2 - Regular
+3 - Bom
+4 - Muito bom
+5 – Excelente
+3. Conteúdo abordado no treinamento é relevante?
+
+3. Conteúdo abordado no treinamento é relevante?<i class="icon fa fa-circle-exclamation text-danger fa-fw ms-2" title="Campo obrigatório" role="img" aria-label="Campo obrigatório"></i>
+Não selecionado
+1 - Ruim
+2 - Regular
+3 - Bom
+4 - Muito bom
+5 – Excelente
+4. O ministrante demonstrou conhecimento e domínio do assunto?
+
+4. O ministrante demonstrou conhecimento e domínio do assunto?<i class="icon fa fa-circle-exclamation text-danger fa-fw ms-2" title="Campo obrigatório" role="img" aria-label="Campo obrigatório"></i>
+Não selecionado
+1 - Ruim
+2 - Regular
+3 - Bom
+4 - Muito bom
+5 – Excelente
+5. O ministrante proporcionou a aplicação prática das informações dadas no treinamento?
+
+5. O ministrante proporcionou a aplicação prática das informações dadas no treinamento?<i class="icon fa fa-circle-exclamation text-danger fa-fw ms-2" title="Campo obrigatório" role="img" aria-label="Campo obrigatório"></i>
+Não selecionado
+1 - Ruim
+2 - Regular
+3 - Bom
+4 - Muito bom
+5 – Excelente
+ Campos obrigatórios

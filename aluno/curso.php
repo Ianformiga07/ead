@@ -34,6 +34,11 @@ if (!$aulaAtual && $aulas) $aulaAtual = $aulas[0];
 $totalAulas = count($aulas);
 $doneAulas  = count($assistidas);
 $progresso  = $totalAulas > 0 ? (int)(($doneAulas / $totalAulas) * 100) : 0;
+
+// Cursos presenciais: progresso sempre 100% (não há aulas online)
+if ($curso['tipo'] === 'presencial') {
+    $progresso = 100;
+}
 $matriModel->atualizarProgresso($user['id'], $cursoId, $progresso);
 
 // Auto-concluir apenas se não exige avaliação
@@ -55,6 +60,57 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
   <?php endif; ?>
 </div>
 
+<?php if ($curso['tipo'] === 'presencial'): ?>
+<!-- ════ LAYOUT PRESENCIAL ════ -->
+<div class="row g-3 justify-content-center">
+  <div class="col-md-7">
+    <div class="bg-white border rounded-3 p-4 text-center mb-3">
+      <div class="mb-3">
+        <i class="bi bi-people-fill" style="font-size:56px;color:#003d7c;opacity:.8"></i>
+      </div>
+      <h5 class="fw-bold mb-1"><?= e($curso['nome']) ?></h5>
+      <p class="text-muted mb-3">
+        <span class="badge" style="background:#e0e9f8;color:#003d7c;font-size:12px">
+          <i class="bi bi-people me-1"></i>Curso Presencial
+        </span>
+        &nbsp;
+        <span class="badge" style="background:#f0f4f9;color:#475569;font-size:12px">
+          <i class="bi bi-clock me-1"></i><?= $curso['carga_horaria'] ?>h
+        </span>
+      </p>
+      <?php if ($curso['descricao']): ?>
+      <p class="text-muted" style="font-size:14px"><?= nl2br(e($curso['descricao'])) ?></p>
+      <?php endif; ?>
+      <hr>
+      <p class="text-muted mb-0" style="font-size:13px">
+        <i class="bi bi-info-circle me-1"></i>
+        Você participou deste curso presencialmente. Utilize os botões abaixo para responder à pesquisa de satisfação e emitir seu certificado.
+      </p>
+    </div>
+
+    <!-- Ações presencial -->
+    <div class="d-flex flex-column gap-3">
+      <?php if ($curso['tem_avaliacao'] && $avaliacao): ?>
+      <a href="<?= APP_URL ?>/aluno/avaliacao.php?curso_id=<?= $cursoId ?>" class="btn btn-warning btn-lg">
+        <i class="bi bi-patch-question me-2"></i>Responder Pesquisa / Avaliação
+      </a>
+      <?php endif; ?>
+      <?php if ($matricula['status'] === 'concluida'): ?>
+      <a href="<?= APP_URL ?>/aluno/certificado.php?curso_id=<?= $cursoId ?>" class="btn btn-success btn-lg">
+        <i class="bi bi-award me-2"></i>Emitir Meu Certificado
+      </a>
+      <?php else: ?>
+      <div class="alert" style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:13px">
+        <i class="bi bi-hourglass-split me-2 text-warning"></i>
+        Seu certificado estará disponível assim que sua participação for confirmada pela administração.
+      </div>
+      <?php endif; ?>
+    </div>
+  </div>
+</div>
+
+<?php else: ?>
+<!-- ════ LAYOUT EAD (original) ════ -->
 <div class="row g-3">
   <!-- SIDEBAR AULAS -->
   <div class="col-md-4 col-xl-3">
@@ -188,5 +244,6 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
     <?php endif; ?>
   </div>
 </div>
+<?php endif; ?>
 
 <?php include __DIR__ . '/../app/views/layouts/aluno_footer.php'; ?>

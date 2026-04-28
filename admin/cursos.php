@@ -31,7 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'curso')
         'status'        => (int)($_POST['status']           ?? 1),
         'tem_avaliacao' => (int)($_POST['tem_avaliacao']    ?? 0),
         'nota_minima'   => (float)($_POST['nota_minima']    ?? 60),
-        // instrutores e conteudo_programatico NÃO são mais salvos aqui (estão no certificado)
+        'data_inicio'   => sanitize($_POST['data_inicio']   ?? ''),
+        'data_fim'      => sanitize($_POST['data_fim']      ?? ''),
     ];
     if (!empty($_FILES['imagem']['name'])) {
         $img = uploadFile($_FILES['imagem'], UPLOAD_PATH . '/cursos', ALLOWED_IMAGE);
@@ -109,10 +110,47 @@ if ($acao === 'del_aula' && $id && ($aid = (int)($_GET['aid'] ?? 0))) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'avaliacao') {
     csrfCheck();
     $aval = $avalModel->porCurso($id);
-    $d = ['curso_id' => $id, 'titulo' => sanitize($_POST['titulo']), 'descricao' => sanitize($_POST['descricao']), 'tentativas' => (int)$_POST['tentativas']];
+    $tipoAval = in_array($_POST['tipo'] ?? '', ['prova','questionario']) ? $_POST['tipo'] : 'prova';
+    $d = ['curso_id' => $id, 'titulo' => sanitize($_POST['titulo']), 'descricao' => sanitize($_POST['descricao']), 'tipo' => $tipoAval, 'tentativas' => (int)$_POST['tentativas']];
     if ($aval) $avalModel->atualizar($aval['id'], $d);
     else       $avalModel->criar($d);
     setFlash('success', 'Avaliação salva!');
+    redirect(APP_URL . "/admin/cursos.php?acao=detalhe&id=$id&tab=avaliacao");
+}
+
+/* ── PRÉ-CARREGAR PERGUNTAS DE SATISFAÇÃO ─── */
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'perguntas_satisfacao') {
+    csrfCheck();
+    $aval = $avalModel->porCurso($id);
+    if (!$aval) {
+        setFlash('error', 'Salve a configuração da avaliação primeiro.');
+        redirect(APP_URL . "/admin/cursos.php?acao=detalhe&id=$id&tab=avaliacao");
+    }
+
+    $perguntasExist = $avalModel->perguntas($aval['id']);
+    foreach ($perguntasExist as $pe) {
+        $avalModel->deletarPergunta($pe['id']);
+    }
+
+    $perguntasSat = [
+        'O conteúdo apresentado e o material didático (material complementar, recursos de mídia, etc.) utilizado facilitou o aprendizado?',
+        'Qual o seu nível de satisfação com o treinamento de um modo geral?',
+        'O conteúdo abordado no treinamento é relevante?',
+        'O ministrante demonstrou conhecimento e domínio do assunto?',
+        'O ministrante proporcionou a aplicação prática das informações dadas no treinamento?',
+    ];
+
+    foreach ($perguntasSat as $ordem => $enunciado) {
+        $avalModel->criarPergunta([
+            'avaliacao_id' => $aval['id'],
+            'enunciado'    => $enunciado,
+            'pontos'       => 1,
+            'ordem'        => $ordem + 1,
+        ]);
+    }
+
+    logAction('avaliacao.satisfacao', "Perguntas de satisfação carregadas — Curso ID $id");
+    setFlash('success', '5 perguntas de satisfação carregadas com sucesso!');
     redirect(APP_URL . "/admin/cursos.php?acao=detalhe&id=$id&tab=avaliacao");
 }
 
@@ -165,26 +203,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['form'] ?? '') === 'certifi
     $d = [
         'nome_cert'      => sanitize($_POST['nome_cert']      ?? ''),
         'instrutor'      => sanitize($_POST['instrutor']      ?? ''),
-        // DEPOIS (correto — preserva HTML do CKEditor):
         'conteudo_prog'  => sanitize_html($_POST['conteudo_prog']  ?? ''),
         'texto_frente'   => sanitize_html($_POST['texto_frente']   ?? ''),
         'verso_conteudo' => sanitize_html($_POST['verso_conteudo'] ?? ''),
         'ativar_verso'   => (int)($_POST['ativar_verso']      ?? 0),
     ];
-    // Upload imagem frente
-    if (!empty($_FILES['imagem_frente']['name'])) {
-        $certDir = UPLOAD_PATH . '/certificados';
-        if (!is_dir($certDir)) mkdir($certDir, 0755, true);
-        $img = uploadFile($_FILES['imagem_frente'], $certDir, ALLOWED_IMAGE);
-        if ($img) $d['frente'] = $img;
-    }
-    // Upload imagem verso
-    if (!empty($_FILES['imagem_verso']['name'])) {
-        $certDir = UPLOAD_PATH . '/certificados';
-        if (!is_dir($certDir)) mkdir($certDir, 0755, true);
-        $img = uploadFile($_FILES['imagem_verso'], $certDir, ALLOWED_IMAGE);
-        if ($img) $d['verso'] = $img;
-    }
     $certModel->salvarModelo($id, $d);
     logAction('certificado.salvar', "Modelo certificado curso ID $id");
     setFlash('success', 'Configurações do certificado salvas!');
@@ -259,6 +282,14 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
         <textarea name="descricao" class="form-control" rows="3" placeholder="Descreva o objetivo do curso..."></textarea>
       </div>
       <div class="col-md-3">
+        <label class="form-label">Data de Início</label>
+        <input type="date" name="data_inicio" class="form-control">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Data de Término</label>
+        <input type="date" name="data_fim" class="form-control">
+      </div>
+      <div class="col-md-3">
         <label class="form-label">Status</label>
         <select name="status" class="form-select"><option value="1">Ativo</option><option value="0">Inativo</option></select>
       </div>
@@ -306,22 +337,26 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
   <a class="course-tab <?= $tab === 'config'      ? 'active' : '' ?>" href="?acao=detalhe&id=<?= $id ?>&tab=config">
     <i class="bi bi-gear-fill"></i> Configurações
   </a>
+  <?php if ($curso['tipo'] !== 'presencial'): ?>
   <a class="course-tab <?= $tab === 'aulas'       ? 'active' : '' ?>" href="?acao=detalhe&id=<?= $id ?>&tab=aulas">
     <i class="bi bi-play-circle-fill"></i> Aulas
     <span class="badge bg-primary ms-1" style="font-size:10px"><?= count($aulas) ?></span>
   </a>
+  <?php endif; ?>
   <a class="course-tab <?= $tab === 'avaliacao'   ? 'active' : '' ?>" href="?acao=detalhe&id=<?= $id ?>&tab=avaliacao">
     <i class="bi bi-patch-question-fill"></i> Avaliação
     <span class="badge bg-warning ms-1" style="font-size:10px"><?= count($perguntas) ?></span>
   </a>
   <a class="course-tab <?= $tab === 'certificado' ? 'active' : '' ?>" href="?acao=detalhe&id=<?= $id ?>&tab=certificado">
-    <i class="bi bi-award-fill"></i> Certificado & Materiais
+    <i class="bi bi-award-fill"></i> Certificado<?= $curso['tipo'] !== 'presencial' ? ' & Materiais' : '' ?>
+    <?php if ($curso['tipo'] !== 'presencial'): ?>
     <span class="badge bg-secondary ms-1" style="font-size:10px"><?= count($materiais) ?></span>
+    <?php endif; ?>
   </a>
 </div>
 
 <!-- ═══════════════════════════════════════════
-     ABA: CONFIGURAÇÕES (sem instrutor/conteúdo)
+     ABA: CONFIGURAÇÕES
      ═══════════════════════════════════════════ -->
 <?php if ($tab === 'config'): ?>
 <div class="form-card">
@@ -365,6 +400,14 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
       <div class="col-md-3">
         <label class="form-label">Nota Mínima (%)</label>
         <input type="number" name="nota_minima" class="form-control" min="0" max="100" value="<?= e($curso['nota_minima'] ?? 60) ?>">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Data de Início</label>
+        <input type="date" name="data_inicio" class="form-control" value="<?= e($curso['data_inicio'] ?? '') ?>">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Data de Término</label>
+        <input type="date" name="data_fim" class="form-control" value="<?= e($curso['data_fim'] ?? '') ?>">
       </div>
       <div class="col-md-3">
         <label class="form-label">Imagem de Capa</label>
@@ -539,6 +582,22 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
           <textarea name="descricao" class="form-control" rows="3"><?= e($aval['descricao'] ?? '') ?></textarea>
         </div>
         <div class="mb-3">
+          <label class="form-label fw-semibold">Tipo de Avaliação</label>
+          <select name="tipo" class="form-select" id="selTipoAval" onchange="toggleTipoAval(this.value)">
+            <option value="prova"        <?= ($aval['tipo'] ?? 'prova') === 'prova'        ? 'selected':'' ?>>
+              📝 Prova — com nota e aprovação
+            </option>
+            <option value="questionario" <?= ($aval['tipo'] ?? 'prova') === 'questionario' ? 'selected':'' ?>>
+              📋 Questionário — satisfação, sem nota
+            </option>
+          </select>
+          <small class="text-muted">
+            <strong>Prova:</strong> calcula nota, exige nota mínima para aprovação.<br>
+            <strong>Questionário:</strong> aluno responde escala 1–5, aprovado ao concluir.
+          </small>
+        </div>
+
+        <div class="mb-3" id="blocoTentativas" <?= ($aval['tipo'] ?? 'prova') === 'questionario' ? 'style="display:none"' : '' ?>>
           <label class="form-label">Tentativas Permitidas</label>
           <input type="number" name="tentativas" class="form-control" min="1" max="10" value="<?= e($aval['tentativas'] ?? 1) ?>">
         </div>
@@ -554,6 +613,53 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
       </form>
     </div>
     <?php if ($aval): ?>
+    <?php $tipoAvalAtual = $aval['tipo'] ?? 'prova'; ?>
+
+    <?php if ($tipoAvalAtual === 'questionario'): ?>
+    <!-- ── QUESTIONÁRIO: botão pré-carregar + info ── -->
+    <div class="form-card">
+      <h6 class="mb-3">
+        <i class="bi bi-clipboard2-check me-2 text-primary"></i>Perguntas de Satisfação
+      </h6>
+      <p class="text-muted" style="font-size:13px">
+        No modo <strong>Questionário</strong> as perguntas usam escala 1–5
+        (Ruim → Excelente) e são preenchidas automaticamente.
+        Clique no botão abaixo para carregar as 5 perguntas padrão.
+      </p>
+      <?php if (count($perguntas) > 0): ?>
+      <div class="alert alert-success py-2 px-3 mb-3" style="font-size:13px">
+        <i class="bi bi-check-circle me-1"></i>
+        <?= count($perguntas) ?> pergunta(s) já cadastrada(s).
+        Clique em "Recarregar" para restaurar as perguntas padrão.
+      </div>
+      <?php endif; ?>
+      <form method="POST">
+        <?= csrfField() ?>
+        <input type="hidden" name="form" value="perguntas_satisfacao">
+        <?php
+          /* CORREÇÃO: aspas simples escapadas corretamente dentro da string PHP */
+          $onclickConfirm = count($perguntas) > 0
+            ? 'onclick="return confirm(\'Isso substituirá as perguntas atuais. Confirmar?\')"'
+            : '';
+        ?>
+        <button type="submit" class="btn btn-primary w-100" <?= $onclickConfirm ?>>
+          <i class="bi bi-<?= count($perguntas) > 0 ? 'arrow-clockwise' : 'stars' ?> me-2"></i>
+          <?= count($perguntas) > 0 ? 'Recarregar Perguntas Padrão' : 'Carregar Perguntas de Satisfação' ?>
+        </button>
+      </form>
+      <hr class="my-3">
+      <small class="text-muted d-block">As 5 perguntas carregadas serão:</small>
+      <ol class="mt-2" style="font-size:12px;color:#6b7280;padding-left:18px">
+        <li>O conteúdo e material didático facilitou o aprendizado?</li>
+        <li>Nível de satisfação com o treinamento em geral?</li>
+        <li>O conteúdo abordado é relevante?</li>
+        <li>O ministrante demonstrou conhecimento e domínio do assunto?</li>
+        <li>O ministrante proporcionou aplicação prática das informações?</li>
+      </ol>
+    </div>
+
+    <?php else: ?>
+    <!-- ── PROVA: formulário normal de nova pergunta ── -->
     <div class="form-card">
       <h6 class="mb-3"><i class="bi bi-plus-circle me-2 text-success"></i>Nova Pergunta</h6>
       <form method="POST">
@@ -578,6 +684,8 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
       </form>
     </div>
     <?php endif; ?>
+
+    <?php endif; ?>
   </div>
   <div class="col-md-8">
     <div class="data-card">
@@ -592,10 +700,21 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
           <div>
             <span class="badge bg-primary me-2"><?= $idx+1 ?></span>
             <strong style="font-size:14px"><?= e($p['enunciado']) ?></strong>
-            <small class="text-muted ms-2">(<?= $p['pontos'] ?> pt)</small>
+            <?php if (($aval['tipo'] ?? 'prova') === 'questionario'): ?>
+              <span class="badge bg-secondary ms-2" style="font-size:11px">Escala 1–5</span>
+            <?php else: ?>
+              <small class="text-muted ms-2">(<?= $p['pontos'] ?> pt)</small>
+            <?php endif; ?>
           </div>
+          <?php if (($aval['tipo'] ?? 'prova') !== 'questionario'): ?>
           <a href="?acao=del_pergunta&id=<?= $id ?>&pid=<?= $p['id'] ?>&tab=avaliacao" class="btn btn-icon btn-outline-danger btn-sm" data-confirm="Excluir esta pergunta?"><i class="bi bi-trash"></i></a>
+          <?php endif; ?>
         </div>
+        <?php if (($aval['tipo'] ?? 'prova') === 'questionario'): ?>
+        <div class="ps-4">
+          <small class="text-muted">Ruim · Regular · Bom · Muito bom · Excelente</small>
+        </div>
+        <?php else: ?>
         <div class="d-flex flex-column gap-1 ps-4">
           <?php foreach ($p['alternativas'] as $alt): ?>
           <div class="d-flex align-items-center gap-2 p-2 rounded <?= $alt['correta'] ? 'bg-success bg-opacity-10 border border-success border-opacity-25' : '' ?>">
@@ -604,23 +723,27 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
           </div>
           <?php endforeach; ?>
         </div>
+        <?php endif; ?>
       </div>
       <?php endforeach; ?>
       <?php else: ?>
-      <div class="empty-state"><i class="bi bi-patch-question"></i><p>Nenhuma pergunta cadastrada.</p></div>
+      <div class="empty-state"><i class="bi bi-patch-question"></i>
+        <p><?= ($aval['tipo'] ?? 'prova') === 'questionario' ? 'Clique em "Carregar Perguntas de Satisfação" ao lado.' : 'Nenhuma pergunta cadastrada.' ?></p>
+      </div>
       <?php endif; ?>
     </div>
   </div>
 </div>
 
 <!-- ═══════════════════════════════════════════
-     ABA: CERTIFICADO & MATERIAIS (estilo Moodle)
+     ABA: CERTIFICADO & MATERIAIS
      ═══════════════════════════════════════════ -->
 <?php elseif ($tab === 'certificado'): ?>
 <div class="row g-3">
 
   <!-- ── Coluna esquerda: Materiais ── -->
   <div class="col-md-4">
+    <?php if ($curso['tipo'] !== 'presencial'): ?>
     <div class="form-card mb-3">
       <h6 class="mb-3"><i class="bi bi-cloud-upload me-2 text-primary"></i>Enviar Material Didático</h6>
       <form method="POST" enctype="multipart/form-data">
@@ -638,6 +761,7 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
         <button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload me-1"></i>Enviar</button>
       </form>
     </div>
+    <?php endif; ?>
 
     <!-- Resumo certificados emitidos -->
     <div class="form-card">
@@ -666,11 +790,11 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
     </div>
   </div>
 
-  <!-- ── Coluna direita: Configuração do Certificado (estilo Moodle) ── -->
+  <!-- ── Coluna direita: Configuração do Certificado ── -->
   <div class="col-md-8">
 
     <!-- Materiais lista -->
-    <?php if ($materiais): ?>
+    <?php if ($materiais && $curso['tipo'] !== 'presencial'): ?>
     <div class="data-card mb-3">
       <div class="data-card-header">
         <h6 class="data-card-title"><i class="bi bi-files me-2"></i>Materiais Didáticos</h6>
@@ -736,22 +860,9 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
             <i class="bi bi-file-earmark-image-fill me-2"></i>Frente do Certificado
           </div>
 
-          <div class="mb-3">
-            <label class="form-label fw-semibold">Imagem de Fundo (Frente)</label>
-            <?php if (!empty($modelo['frente'])): ?>
-            <div class="cert-preview-img mb-2">
-              <img src="<?= APP_URL ?>/public/uploads/certificados/<?= e($modelo['frente']) ?>"
-                   alt="Frente atual" class="rounded border" style="max-height:120px">
-              <div style="font-size:12px;color:#6b7280;margin-top:4px">
-                <i class="bi bi-check-circle text-success me-1"></i>Imagem atual: <?= e($modelo['frente']) ?>
-              </div>
-            </div>
-            <?php endif; ?>
-            <input type="file" name="imagem_frente" class="form-control" accept="image/*">
-            <small class="text-muted">
-              Tipos aceitos: JPG, PNG, SVG. Tamanho recomendado: <strong>1122 × 794px</strong> (A4 paisagem, 96dpi).<br>
-              <?php if (!empty($modelo['frente'])): ?>Envie um novo arquivo para substituir a imagem atual.<?php endif; ?>
-            </small>
+          <div class="alert alert-info mb-3 py-2 px-3" style="font-size:13px">
+            <i class="bi bi-info-circle me-2"></i>
+            O layout visual do certificado é gerado automaticamente pelo sistema — não é necessário inserir imagem de fundo.
           </div>
 
           <div class="mb-0">
@@ -800,36 +911,15 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
           </div>
 
           <div id="blocoVerso" <?= ($modelo['ativar_verso'] ?? 0) == 0 ? 'style="display:none"' : '' ?>>
-
-            <div class="mb-3">
-              <label class="form-label fw-semibold">Imagem de Fundo (Verso)</label>
-              <?php if (!empty($modelo['verso'])): ?>
-              <div class="cert-preview-img mb-2">
-                <img src="<?= APP_URL ?>/public/uploads/certificados/<?= e($modelo['verso']) ?>"
-                     alt="Verso atual" class="rounded border" style="max-height:120px">
-                <div style="font-size:12px;color:#6b7280;margin-top:4px">
-                  <i class="bi bi-check-circle text-success me-1"></i>Imagem atual: <?= e($modelo['verso']) ?>
-                </div>
-              </div>
-              <?php endif; ?>
-              <input type="file" name="imagem_verso" class="form-control" accept="image/*">
-              <small class="text-muted">
-                Tipos aceitos: JPG, PNG, SVG. Tamanho recomendado: <strong>1122 × 794px</strong>.
-                <?php if (!empty($modelo['verso'])): ?>Envie um novo arquivo para substituir.<?php endif; ?>
-              </small>
-            </div>
-
             <div class="mb-0">
               <label class="form-label fw-semibold">Conteúdo Programático</label>
               <small class="text-muted d-block mb-2">
                 Este conteúdo será exibido no verso do certificado.<br>
                 Use as ferramentas do editor para <strong>negrito</strong>, <em>itálico</em>, tamanho de fonte, listas com marcadores e muito mais.
               </small>
-              <!-- CKEditor será inicializado aqui -->
               <textarea name="conteudo_prog" id="conteudo_prog"
                         rows="10"><?= htmlspecialchars($modelo['conteudo_prog'] ?? $curso['conteudo_programatico'] ?? '', ENT_QUOTES) ?></textarea>
             </div>
-
           </div><!-- /blocoVerso -->
         </div>
 
@@ -938,13 +1028,13 @@ include __DIR__ . '/../app/views/layouts/admin_header.php';
 <?php endif; ?>
 
 <!-- ═══════════════════════════════════════════════════════════
-     SCRIPTS — carregados após todo o HTML
+     SCRIPTS
      ═══════════════════════════════════════════════════════════ -->
 
-<!-- 1. CKEditor 4 full: carregado PRIMEIRO, antes de qualquer uso -->
+<!-- 1. CKEditor 4 full: carregado PRIMEIRO -->
 <script src="https://cdn.ckeditor.com/4.22.1/full/ckeditor.js"></script>
 
-<!-- 2. Lógica da página: só roda depois que o CKEditor já está disponível -->
+<!-- 2. Lógica da página -->
 <script>
 /* ── Utilitários de formulário ────────────────────────────────── */
 function setTipoAula(tipo) {
@@ -998,34 +1088,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
 /* ══════════════════════════════════════════════════════════════
    CKEditor — inicialização controlada
-   ══════════════════════════════════════════════════════════════
-   CORREÇÕES APLICADAS:
-   1. Flag _ckReady era global e nunca resetava ao ocultar o bloco
-      → editor não reinicializava ao alternar Não→Sim múltiplas vezes.
-      CORREÇÃO: destruir + reinicializar sempre que o bloco ficar
-      visível; checar pela instância real, não por flag estática.
-
-   2. autogrow + resize_enabled juntos causam colapso de altura em
-      alguns navegadores (autogrow redimensiona para 0 ao abrir).
-      CORREÇÃO: usar apenas resize manual (resize_enabled:true) +
-      altura inicial fixa via startupFocus; remover autoGrow.
-
-   3. Listas (ul/li) perdiam list-style no certificado gerado porque
-      strip_tags removia atributos style.
-      CORREÇÃO: contentsCss garante estilos dentro do editor;
-      sanitize_html no backend foi ampliado para preservar <font><a>.
    ══════════════════════════════════════════════════════════════ */
 
 /**
  * Destrói a instância existente (se houver) e cria uma nova.
- * Seguro para chamar múltiplas vezes.
  */
 function initCKEditor() {
-  /* Só existe na aba certificado */
   var el = document.getElementById('conteudo_prog');
   if (!el) return;
 
-  /* Destrói instância anterior sem exceção */
   try {
     if (CKEDITOR.instances && CKEDITOR.instances['conteudo_prog']) {
       CKEDITOR.instances['conteudo_prog'].destroy(true);
@@ -1033,26 +1104,14 @@ function initCKEditor() {
   } catch (e) { /* ignora erro de destruição */ }
 
   CKEDITOR.replace('conteudo_prog', {
-
-    /* ── Conteúdo permitido ─────────────────────────────────── */
-    allowedContent: true,   /* aceita TODO HTML: ul, li, ol, style, etc. */
-
-    /* ── Resize manual (sem autogrow para evitar conflito) ──── */
+    allowedContent: true,
     resize_enabled: true,
     resize_dir:     'vertical',
-    /* Altura inicial — sem autogrow evita colapso em display:none */
     height: 280,
-
-    /* ── Plugins necessários ────────────────────────────────── */
-    /* autogrow REMOVIDO: conflitava com resize_enabled causando
-       altura = 0 ao inicializar dentro de bloco oculto.           */
     extraPlugins: 'colorbutton,font',
     removePlugins: 'image,flash,iframe,forms,pagebreak,scayt,wsc',
-    /* list, indent, basicstyles, enterkey já vêm no build "full" */
-
     language: 'pt-br',
 
-    /* ── Toolbar completa com listas ────────────────────────── */
     toolbar: [
       { name: 'styles',      items: ['Format', 'FontSize', 'TextColor', 'BGColor'] },
       { name: 'basicstyles', items: ['Bold', 'Italic', 'Underline', 'Strike', '-', 'RemoveFormat'] },
@@ -1063,8 +1122,6 @@ function initCKEditor() {
       { name: 'tools',       items: ['Maximize', 'Source'] }
     ],
 
-    /* ── CSS dentro do iframe do editor ────────────────────── */
-    /* String simples — CKEditor 4 NÃO aceita array de CSS inline */
     contentsCss: [
       'body{font-family:Arial,sans-serif;font-size:13px;line-height:1.6;margin:12px;color:#222}',
       'ul{padding-left:22px;margin:6px 0 10px 0;list-style-type:disc !important}',
@@ -1076,8 +1133,6 @@ function initCKEditor() {
     ].join('')
   });
 
-  /* ── Sincroniza textarea antes de qualquer submit ─────────── */
-  /* Registra apenas uma vez por form usando dataset */
   document.querySelectorAll('form').forEach(function (form) {
     if (form.dataset.ckSubmitBound) return;
     form.dataset.ckSubmitBound = '1';
@@ -1090,20 +1145,16 @@ function initCKEditor() {
   });
 }
 
-/* ── toggleVerso: controla visibilidade + ciclo de vida do editor ── */
+/* ── toggleVerso ── */
 function toggleVerso(ativar) {
   var bloco = document.getElementById('blocoVerso');
   if (!bloco) return;
 
   if (ativar) {
     bloco.style.display = '';
-    /* Pequeno delay garante que o bloco está visível e tem dimensões
-       antes do CKEditor medir a área — resolve o bug de altura zero. */
     setTimeout(initCKEditor, 50);
   } else {
     bloco.style.display = 'none';
-    /* Destrói o editor ao ocultar para liberar memória e
-       permitir reinicialização limpa se o usuário voltar a ativar. */
     try {
       if (CKEDITOR.instances && CKEDITOR.instances['conteudo_prog']) {
         CKEDITOR.instances['conteudo_prog'].destroy(true);
@@ -1112,16 +1163,18 @@ function toggleVerso(ativar) {
   }
 }
 
-/* ── DOMContentLoaded: inicializa se verso já estiver ativo ─────── */
+/* ── toggleTipoAval ── */
+function toggleTipoAval(tipo) {
+  var bloco = document.getElementById('blocoTentativas');
+  if (bloco) bloco.style.display = tipo === 'questionario' ? 'none' : '';
+}
+
+/* ── DOMContentLoaded ── */
 document.addEventListener('DOMContentLoaded', function () {
   var el = document.getElementById('conteudo_prog');
-  if (!el) return; /* não é a aba certificado — sai sem fazer nada */
+  if (!el) return;
 
   var bloco = document.getElementById('blocoVerso');
-
-  /* Se o bloco estiver visível (ativar_verso = 1 salvo no BD),
-     inicializa o editor diretamente. Caso contrário aguarda o usuário
-     clicar "Sim" para que toggleVerso(1) o inicialize. */
   if (!bloco || bloco.style.display !== 'none') {
     initCKEditor();
   }

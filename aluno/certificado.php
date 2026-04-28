@@ -94,11 +94,17 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
   height: 210mm;
   background: #fff;
   border-radius: 6px;
-  overflow: hidden;          /* corta qualquer overflow na tela */
+  overflow: hidden;
   box-shadow: 0 4px 28px rgba(0,0,0,.14);
   position: relative;
   flex-shrink: 0;
   box-sizing: border-box;
+
+  /* Escala proporcional para caber na tela — JS calcula --cert-scale */
+  transform-origin: top center;
+  transform: scale(var(--cert-scale, 1));
+  /* Remove espaco fantasma que transform deixa no fluxo */
+  margin-bottom: calc((var(--cert-scale, 1) - 1) * 210mm);
 }
 
 /* ── Barra lateral colorida ─────────────────────────── */
@@ -254,6 +260,11 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
    Cada .cert-page = 1 folha A4 completa.
    ══════════════════════════════════════════════════════ */
 @media print {
+  /* Na impressão: cancela a escala JS e deixa o @page controlar */
+  .cert-page {
+    transform: none !important;
+    margin-bottom: 0 !important;
+  }
 
   /* Ocultar tudo que não é certificado */
   .aluno-navbar,
@@ -322,6 +333,35 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
 }
 </style>
 
+<script>
+/* ── Escala responsiva do certificado na tela ────────────────────
+   Calcula quanto o card A4 (297mm) precisa encolher para caber
+   na viewport com 32px de margem em cada lado.
+   Na impressão o @media print cancela o transform via CSS.
+   ────────────────────────────────────────────────────────────── */
+(function () {
+  function ajustarEscala() {
+    /* Largura disponível = janela menos margens laterais */
+    var disponivelPx = window.innerWidth - 64;
+
+    /* Converte 297mm para px usando devicePixelRatio-aware dpi.
+       96dpi é o padrão CSS: 1mm = 96/25.4 px */
+    var mmToPx      = 96 / 25.4;
+    var larguraCard = 297 * mmToPx;  /* ~1122px */
+
+    var escala = disponivelPx < larguraCard
+                 ? disponivelPx / larguraCard
+                 : 1;   /* nunca amplia, só reduz */
+
+    document.documentElement.style.setProperty('--cert-scale', escala.toFixed(4));
+  }
+
+  /* Aplica ao carregar e ao redimensionar */
+  ajustarEscala();
+  window.addEventListener('resize', ajustarEscala);
+})();
+</script>
+
 <!-- Navegação -->
 <div class="breadcrumb-nav mb-4 d-flex align-items-center gap-3">
   <a href="<?= APP_URL ?>/aluno/dashboard.php" class="btn btn-sm btn-outline-secondary">
@@ -355,12 +395,7 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
   <!-- Barra lateral colorida estilo ADAPEC -->
   <div class="cert-sidebar"></div>
 
-  <!-- Imagem de fundo (se houver) -->
-  <?php if (!empty($modelo['frente'])): ?>
-  <img src="<?= APP_URL ?>/public/uploads/certificados/<?= e($modelo['frente']) ?>"
-       style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.08;z-index:0"
-       alt="">
-  <?php endif; ?>
+  <!-- Imagem de fundo removida: o layout gerado pelo sistema e suficiente -->
 
   <div class="cert-inner" style="position:relative;z-index:1">
 
@@ -459,11 +494,7 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
 <div class="cert-page cert-verso">
   <div class="cert-sidebar"></div>
 
-  <?php if (!empty($modelo['verso'])): ?>
-  <img src="<?= APP_URL ?>/public/uploads/certificados/<?= e($modelo['verso']) ?>"
-       style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.06;z-index:0"
-       alt="">
-  <?php endif; ?>
+  <!-- Imagem de fundo do verso removida: layout gerado pelo sistema -->
 
   <div class="cert-inner" style="position:relative;z-index:1">
 

@@ -108,8 +108,8 @@ class AvaliacaoModel extends Model
     public function criar(array $d): int
     {
         $this->execute(
-            "INSERT INTO avaliacoes (curso_id, titulo, descricao, tentativas) VALUES (?,?,?,?)",
-            [$d['curso_id'], $d['titulo'], $d['descricao'] ?? null, $d['tentativas'] ?? 1]
+            "INSERT INTO avaliacoes (curso_id, titulo, descricao, tipo, tentativas) VALUES (?,?,?,?,?)",
+            [$d['curso_id'], $d['titulo'], $d['descricao'] ?? null, $d['tipo'] ?? 'prova', $d['tentativas'] ?? 1]
         );
         return (int)$this->lastId();
     }
@@ -117,8 +117,8 @@ class AvaliacaoModel extends Model
     public function atualizar(int $id, array $d): bool
     {
         return $this->execute(
-            "UPDATE avaliacoes SET titulo=?, descricao=?, tentativas=? WHERE id=?",
-            [$d['titulo'], $d['descricao'] ?? null, $d['tentativas'] ?? 1, $id]
+            "UPDATE avaliacoes SET titulo=?, descricao=?, tipo=?, tentativas=? WHERE id=?",
+            [$d['titulo'], $d['descricao'] ?? null, $d['tipo'] ?? 'prova', $d['tentativas'] ?? 1, $id]
         );
     }
 

@@ -64,49 +64,94 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $podeRealizar) {
             throw new Exception('A avaliação não possui perguntas cadastradas.');
         }
 
-        $totalPts  = array_sum(array_column($perguntas, 'pontos'));
-        $acertos   = 0;
-        $respostas = [];
+        $isQuestionario = ($avaliacao['tipo'] ?? 'prova') === 'questionario';
 
-        foreach ($perguntas as $p) {
-            $altId   = (int)($_POST["resp_{$p['id']}"] ?? 0);
-            $alts    = $avalModel->alternativas($p['id']);
-            $correta = false;
-            foreach ($alts as $alt) {
-                if ($alt['id'] == $altId && $alt['correta']) {
-                    $correta = true;
-                    $acertos += $p['pontos'];
-                    break;
+        if ($isQuestionario) {
+            // ── QUESTIONÁRIO DE SATISFAÇÃO ────────────────────────────
+            // Não calcula nota — aluno é aprovado ao concluir.
+            // Salva cada resposta como o valor numérico (1–5) escolhido.
+            $respostas = [];
+            foreach ($perguntas as $p) {
+                $valor = (int)($_POST["resp_{$p['id']}"] ?? 0);
+                // Busca a alternativa correspondente ao valor escolhido
+                $alts = $avalModel->alternativas($p['id']);
+                $altId = 0;
+                foreach ($alts as $alt) {
+                    if ((int)$alt['valor'] === $valor) { $altId = $alt['id']; break; }
+                }
+                // Fallback: se não encontrar por valor, usa o índice direto
+                if (!$altId && isset($alts[$valor - 1])) {
+                    $altId = $alts[$valor - 1]['id'];
+                }
+                $respostas[] = ['pergunta_id' => $p['id'], 'alternativa_id' => $altId ?: 0, 'correta' => true];
+            }
+
+            $nota     = 100; // aprovado sempre
+            $aprovado = true;
+
+            $tentId = $avalModel->registrarTentativa($user['id'], $avaliacao['id'], $nota, $aprovado);
+            if (!$tentId) throw new Exception('Falha ao registrar questionário.');
+
+            foreach ($respostas as $r) {
+                if ($r['alternativa_id']) {
+                    $avalModel->registrarResposta($tentId, $r['pergunta_id'], $r['alternativa_id'], true);
                 }
             }
-            $respostas[] = ['pergunta_id' => $p['id'], 'alternativa_id' => $altId, 'correta' => $correta];
+
+            if ($mat['status'] !== 'concluida') {
+                $matriModel->concluir($user['id'], $cursoId);
+            }
+
+            $db->commit();
+            logAction('avaliacao.realizada', "Curso $cursoId — Questionário concluído");
+            setFlash('success', 'Questionário enviado! Seu certificado já está disponível.');
+            redirect(APP_URL . "/aluno/avaliacao.php?curso_id=$cursoId");
+
+        } else {
+            // ── PROVA COM NOTA ─────────────────────────────────────────
+            $totalPts  = array_sum(array_column($perguntas, 'pontos'));
+            $acertos   = 0;
+            $respostas = [];
+
+            foreach ($perguntas as $p) {
+                $altId   = (int)($_POST["resp_{$p['id']}"] ?? 0);
+                $alts    = $avalModel->alternativas($p['id']);
+                $correta = false;
+                foreach ($alts as $alt) {
+                    if ($alt['id'] == $altId && $alt['correta']) {
+                        $correta = true;
+                        $acertos += $p['pontos'];
+                        break;
+                    }
+                }
+                $respostas[] = ['pergunta_id' => $p['id'], 'alternativa_id' => $altId, 'correta' => $correta];
+            }
+
+            $nota     = $totalPts > 0 ? round(($acertos / $totalPts) * 100, 2) : 0;
+            $aprovado = $nota >= (float)$curso['nota_minima'];
+
+            // registrarTentativa() já cuida de marcar a extra como utilizada internamente
+            $tentId = $avalModel->registrarTentativa($user['id'], $avaliacao['id'], $nota, $aprovado);
+            if (!$tentId) throw new Exception('Falha ao registrar tentativa.');
+
+            foreach ($respostas as $r) {
+                $avalModel->registrarResposta($tentId, $r['pergunta_id'], $r['alternativa_id'], $r['correta']);
+            }
+
+            // Marcar matrícula como concluída se aprovado
+            if ($aprovado && $mat['status'] !== 'concluida') {
+                $matriModel->concluir($user['id'], $cursoId);
+            }
+
+            $db->commit();
+            logAction('avaliacao.realizada', "Curso $cursoId — Nota: $nota% — " . ($aprovado ? 'Aprovado' : 'Reprovado'));
+
+            $msg = $aprovado
+                ? "Parabéns! Você foi aprovado com nota {$nota}%! Seu certificado já está disponível."
+                : "Sua nota foi {$nota}%. A nota mínima é {$curso['nota_minima']}%.";
+            setFlash($aprovado ? 'success' : 'warning', $msg);
+            redirect(APP_URL . "/aluno/avaliacao.php?curso_id=$cursoId");
         }
-
-        $nota     = $totalPts > 0 ? round(($acertos / $totalPts) * 100, 2) : 0;
-        $aprovado = $nota >= (float)$curso['nota_minima'];
-
-        // registrarTentativa() já cuida de marcar a extra como utilizada internamente
-        $tentId = $avalModel->registrarTentativa($user['id'], $avaliacao['id'], $nota, $aprovado);
-        if (!$tentId) throw new Exception('Falha ao registrar tentativa.');
-
-        foreach ($respostas as $r) {
-            $avalModel->registrarResposta($tentId, $r['pergunta_id'], $r['alternativa_id'], $r['correta']);
-        }
-
-        // Marcar matrícula como concluída se aprovado
-        if ($aprovado && $mat['status'] !== 'concluida') {
-            $matriModel->concluir($user['id'], $cursoId);
-        }
-
-        $db->commit();
-
-        logAction('avaliacao.realizada', "Curso $cursoId — Nota: $nota% — " . ($aprovado ? 'Aprovado' : 'Reprovado'));
-
-        $msg = $aprovado
-            ? "Parabéns! Você foi aprovado com nota {$nota}%! Seu certificado já está disponível."
-            : "Sua nota foi {$nota}%. A nota mínima é {$curso['nota_minima']}%.";
-        setFlash($aprovado ? 'success' : 'warning', $msg);
-        redirect(APP_URL . "/aluno/avaliacao.php?curso_id=$cursoId");
 
     } catch (Exception $e) {
         if (isset($db) && $db->inTransaction()) $db->rollBack();
@@ -127,6 +172,7 @@ $tentativas      = $avalModel->tentativasAluno($user['id'], $avaliacao['id']);
 $ultimaTentativa = $avalModel->ultimaTentativa($user['id'], $avaliacao['id']);
 $extrasDisp      = $avalModel->tentativasExtrasDisponiveis($user['id'], $avaliacao['id']);
 $podeRealizar    = $avalModel->podeRealizar($user['id'], $avaliacao['id'], (int)$avaliacao['tentativas']);
+$isQuestionario  = ($avaliacao['tipo'] ?? 'prova') === 'questionario';
 
 $pageTitle = 'Avaliação — ' . $curso['nome'];
 include __DIR__ . '/../app/views/layouts/aluno_header.php';
@@ -143,6 +189,18 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
 </div>
 
 <?php if ($ultimaTentativa): ?>
+<?php if ($isQuestionario): ?>
+<div class="alert alert-success d-flex align-items-center gap-3 mb-4">
+  <i class="bi bi-check-circle-fill fs-4"></i>
+  <div class="flex-grow-1">
+    <strong>Questionário já respondido</strong> — <?= dataBR($ultimaTentativa['realizado_em']) ?>
+    <br><small>Você concluiu o questionário de satisfação deste curso.</small>
+  </div>
+  <a href="<?= APP_URL ?>/aluno/certificado.php?curso_id=<?= $cursoId ?>" class="btn btn-success btn-sm">
+    <i class="bi bi-award me-1"></i>Ver Certificado
+  </a>
+</div>
+<?php else: ?>
 <div class="alert alert-<?= $ultimaTentativa['aprovado'] ? 'success' : 'warning' ?> d-flex align-items-center gap-3 mb-4">
   <i class="bi bi-<?= $ultimaTentativa['aprovado'] ? 'check-circle-fill' : 'exclamation-triangle-fill' ?> fs-4"></i>
   <div class="flex-grow-1">
@@ -165,6 +223,7 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
   </a>
   <?php endif; ?>
 </div>
+<?php endif; ?>
 <?php endif; ?>
 
 <?php if (!$podeRealizar): ?>
@@ -197,6 +256,40 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
     </div>
     <?php endif; ?>
 
+    <?php if ($isQuestionario): ?>
+    <!-- ── QUESTIONÁRIO DE SATISFAÇÃO ─────────────────── -->
+    <div class="alert alert-info mb-4 py-2 px-3" style="font-size:13px">
+      <i class="bi bi-info-circle me-2"></i>
+      Responda todas as questões abaixo. Não há nota — seu certificado será liberado ao concluir.
+    </div>
+    <form method="POST" id="formAvaliacao">
+      <?= csrfField() ?>
+      <?php foreach ($perguntas as $idx => $p): ?>
+      <div class="bg-white border rounded-3 p-4 mb-3 shadow-sm">
+        <div class="mb-3 d-flex align-items-start gap-2">
+          <span class="badge bg-secondary rounded-pill"><?= $idx + 1 ?></span>
+          <strong><?= e($p['enunciado']) ?></strong>
+        </div>
+        <!-- Escala Likert 1–5 -->
+        <div class="d-flex gap-2 flex-wrap" id="grp_<?= $p['id'] ?>">
+          <?php
+          $opcoes = ['1' => 'Ruim', '2' => 'Regular', '3' => 'Bom', '4' => 'Muito bom', '5' => 'Excelente'];
+          foreach ($opcoes as $val => $label):
+          ?>
+          <label class="likert-opt flex-fill text-center border rounded-3 p-2"
+                 style="cursor:pointer;min-width:80px">
+            <input type="radio" name="resp_<?= $p['id'] ?>" value="<?= $val ?>"
+                   class="d-none likert-radio" data-group="<?= $p['id'] ?>" required>
+            <div class="likert-num fw-bold" style="font-size:18px"><?= $val ?></div>
+            <div style="font-size:11px;color:#6b7280"><?= $label ?></div>
+          </label>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <?php endforeach; ?>
+
+    <?php else: ?>
+    <!-- ── PROVA COM NOTA ───────────────────────────────── -->
     <div class="d-flex justify-content-between mb-3">
       <small class="text-muted"><?= count($perguntas) ?> questão(ões) · Mínimo: <?= $curso['nota_minima'] ?>%</small>
       <small class="text-muted">
@@ -231,13 +324,14 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
         </div>
       </div>
       <?php endforeach; ?>
+    <?php endif; ?>
 
       <div class="d-flex justify-content-between align-items-center mt-4 pt-2 border-top">
         <a href="<?= APP_URL ?>/aluno/curso.php?id=<?= $cursoId ?>" class="btn btn-outline-secondary">
           <i class="bi bi-x me-1"></i>Cancelar
         </a>
         <button type="submit" class="btn btn-primary px-5" id="btnEnviar">
-          <i class="bi bi-send me-2"></i>Enviar Respostas
+          <i class="bi bi-send me-2"></i><?= $isQuestionario ? 'Enviar Questionário' : 'Enviar Respostas' ?>
         </button>
       </div>
     </form>
@@ -245,17 +339,52 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
 </div>
 <?php endif; ?>
 
+<style>
+/* Likert scale visual feedback */
+.likert-opt { transition: background .15s, border-color .15s; }
+.likert-opt:hover { background: #f0f9ff; border-color: #3b82f6 !important; }
+.likert-opt.likert-selected { background: #eff6ff; border-color: #2563eb !important; }
+.likert-opt.likert-selected .likert-num { color: #2563eb; }
+</style>
+
 <script>
+/* ── Questionário Likert ─────────────────────────────────── */
+document.querySelectorAll('.likert-radio').forEach(function(radio) {
+    radio.addEventListener('change', function() {
+        var group = this.dataset.group;
+        document.querySelectorAll('[data-group="' + group + '"]').forEach(function(r) {
+            r.closest('.likert-opt').classList.remove('likert-selected');
+        });
+        this.closest('.likert-opt').classList.add('likert-selected');
+    });
+});
+
+/* ── Prova múltipla escolha ──────────────────────────────── */
 function selectOpt(el, group) {
     document.querySelectorAll('.quiz-option[data-group="' + group + '"]').forEach(o => o.classList.remove('selected'));
     el.classList.add('selected');
     document.getElementById('inp_' + group).value = el.dataset.value;
 }
+
+/* ── Validação e spinner no submit ───────────────────────── */
 document.getElementById('formAvaliacao')?.addEventListener('submit', function(e) {
-    const inputs = this.querySelectorAll('input[type="hidden"][id^="inp_"]');
-    let ok = true;
-    inputs.forEach(inp => { if (!inp.value) ok = false; });
-    if (!ok) { e.preventDefault(); alert('Por favor, responda todas as questões antes de enviar.'); return; }
+    // Prova: verifica hidden inputs
+    const hiddens = this.querySelectorAll('input[type="hidden"][id^="inp_"]');
+    if (hiddens.length > 0) {
+        let ok = true;
+        hiddens.forEach(inp => { if (!inp.value) ok = false; });
+        if (!ok) { e.preventDefault(); alert('Por favor, responda todas as questões antes de enviar.'); return; }
+    }
+    // Questionário: verifica radios
+    const grupos = new Set();
+    this.querySelectorAll('.likert-radio').forEach(r => grupos.add(r.name));
+    for (const nome of grupos) {
+        if (!this.querySelector('input[name="' + nome + '"]:checked')) {
+            e.preventDefault();
+            alert('Por favor, responda todas as questões antes de enviar.');
+            return;
+        }
+    }
     const btn = document.getElementById('btnEnviar');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';

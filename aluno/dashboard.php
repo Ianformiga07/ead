@@ -221,9 +221,9 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
             <?= $c['progresso'] > 0 ? 'Continuar Curso' : 'Iniciar Curso' ?>
           </a>
           <?php else: ?>
-          <span class="btn btn-outline-secondary btn-sm flex-grow-1 disabled">
-            <i class="bi bi-people me-1"></i>Presencial
-          </span>
+          <a href="<?= APP_URL ?>/aluno/curso.php?id=<?= $c['id'] ?>" class="btn btn-outline-primary btn-sm flex-grow-1">
+            <i class="bi bi-people me-1"></i>Acessar Curso
+          </a>
           <?php endif; ?>
 
           <?php if ($c['status_matricula'] === 'concluida'): ?>

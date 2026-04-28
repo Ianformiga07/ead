@@ -29,9 +29,11 @@ class CursoModel extends Model {
 
     public function criar(array $d): int {
         $this->execute(
-            "INSERT INTO cursos (nome, descricao, tipo, carga_horaria, instrutores, status, tem_avaliacao, nota_minima, imagem, conteudo_programatico)
-             VALUES (?,?,?,?,?,?,?,?,?,?)",
-            [$d['nome'], $d['descricao'], $d['tipo'], $d['carga_horaria'], $d['instrutores'] ?? null,
+            "INSERT INTO cursos (nome, descricao, tipo, carga_horaria, data_inicio, data_fim, instrutores, status, tem_avaliacao, nota_minima, imagem, conteudo_programatico)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            [$d['nome'], $d['descricao'], $d['tipo'], $d['carga_horaria'],
+             $d['data_inicio'] ?: null, $d['data_fim'] ?: null,
+             $d['instrutores'] ?? null,
              $d['status'] ?? 1, $d['tem_avaliacao'] ?? 0, $d['nota_minima'] ?? 60,
              $d['imagem'] ?? null, $d['conteudo_programatico'] ?? null]
         );
@@ -40,14 +42,18 @@ class CursoModel extends Model {
 
     public function atualizar(int $id, array $d): bool {
         return $this->execute(
-            "UPDATE cursos SET nome=?, descricao=?, tipo=?, carga_horaria=?, instrutores=?,
-             status=?, tem_avaliacao=?, nota_minima=?, conteudo_programatico=?" .
+            "UPDATE cursos SET nome=?, descricao=?, tipo=?, carga_horaria=?, data_inicio=?, data_fim=?,
+             instrutores=?, status=?, tem_avaliacao=?, nota_minima=?, conteudo_programatico=?" .
             (!empty($d['imagem']) ? ", imagem=?" : "") . " WHERE id=?",
             !empty($d['imagem'])
-                ? [$d['nome'], $d['descricao'], $d['tipo'], $d['carga_horaria'], $d['instrutores'] ?? null,
+                ? [$d['nome'], $d['descricao'], $d['tipo'], $d['carga_horaria'],
+                   $d['data_inicio'] ?: null, $d['data_fim'] ?: null,
+                   $d['instrutores'] ?? null,
                    $d['status'], $d['tem_avaliacao'] ?? 0, $d['nota_minima'] ?? 60,
                    $d['conteudo_programatico'] ?? null, $d['imagem'], $id]
-                : [$d['nome'], $d['descricao'], $d['tipo'], $d['carga_horaria'], $d['instrutores'] ?? null,
+                : [$d['nome'], $d['descricao'], $d['tipo'], $d['carga_horaria'],
+                   $d['data_inicio'] ?: null, $d['data_fim'] ?: null,
+                   $d['instrutores'] ?? null,
                    $d['status'], $d['tem_avaliacao'] ?? 0, $d['nota_minima'] ?? 60,
                    $d['conteudo_programatico'] ?? null, $id]
         );
