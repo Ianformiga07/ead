@@ -28,15 +28,42 @@ define('ALLOWED_MATERIAL', ['pdf','doc','docx','ppt','pptx','xls','xlsx','zip','
 define('ALLOWED_IMAGE',    ['jpg','jpeg','png','gif','webp']);
 
 // Sessão
-define('SESSION_NAME', 'ead_session');
+define('SESSION_NAME',    'ead_session');
+define('SESSION_TIMEOUT', 300); // 5 minutos em segundos
 
 // Segurança
 ini_set('session.cookie_httponly', 1);
 ini_set('session.use_strict_mode', 1);
+ini_set('session.gc_maxlifetime',  SESSION_TIMEOUT);
+ini_set('session.cookie_samesite', 'Lax');
 date_default_timezone_set('America/Sao_Paulo');
 
 session_name(SESSION_NAME);
 session_start();
+
+// ── Expiração automática de sessão por inatividade ────────────
+if (!empty($_SESSION['usuario_id'])) {
+    $agora        = time();
+    $ultimaAtiv   = $_SESSION['_ultima_atividade'] ?? $agora;
+    $inativo      = $agora - $ultimaAtiv;
+
+    if ($inativo > SESSION_TIMEOUT) {
+        // Sessão expirada por inatividade: destrói e redireciona
+        session_unset();
+        session_destroy();
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host     = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $subdir   = '/ead';
+        header('Location: ' . $protocol . '://' . $host . $subdir . '/login.php?timeout=1');
+        exit;
+    }
+
+    // Renova timestamp a cada requisição
+    $_SESSION['_ultima_atividade'] = $agora;
+} else {
+    // Inicializa o timestamp para novos logins
+    $_SESSION['_ultima_atividade'] = time();
+}
 
 // Upload de vídeo para aulas
 define('ALLOWED_VIDEO', ['mp4','webm','ogg','mov']);

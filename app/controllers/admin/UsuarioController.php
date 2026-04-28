@@ -54,41 +54,61 @@ class UsuarioController extends BaseController
         $id = (int)($params['id'] ?? 0);
 
         $d = [
-            'nome'   => sanitize($this->post('nome')),
-            'email'  => sanitize($this->post('email')),
+            'nome'   => sanitizeName($this->post('nome')),
+            'email'  => sanitizeEmail($this->post('email')),
             'perfil' => in_array($this->post('perfil'), ['admin', 'operador'])
                         ? $this->post('perfil') : 'operador',
             'status' => $this->intPost('status', 1),
         ];
-        $senha = $this->post('senha');
+        $senha     = $this->post('senha');
+        $redirBase = $id ? APP_URL . "/admin/usuarios/{$id}" : APP_URL . '/admin/usuarios/novo';
 
-        if (empty($d['nome']) || empty($d['email'])) {
-            $this->error('Nome e e-mail são obrigatórios.');
-            $this->redirect($id ? APP_URL . "/admin/usuarios/{$id}" : APP_URL . '/admin/usuarios/novo');
+        // ── Validações ────────────────────────────────────────
+        $erros = [];
+
+        if (empty($d['nome']) || strlen($d['nome']) < 3) {
+            $erros[] = 'Nome é obrigatório e deve ter ao menos 3 caracteres.';
+        }
+
+        if (empty($d['email'])) {
+            $erros[] = 'E-mail inválido ou obrigatório.';
+        }
+
+        if (!in_array((int)$d['status'], [0, 1], true)) {
+            $erros[] = 'Status inválido.';
+        }
+
+        if (!$id && empty($senha)) {
+            $erros[] = 'Informe uma senha.';
+        }
+
+        if (!empty($senha) && strlen($senha) < 6) {
+            $erros[] = 'A senha deve ter ao menos 6 caracteres.';
+        }
+
+        if (!empty($erros)) {
+            $this->error(implode(' | ', $erros));
+            $this->redirect($redirBase);
         }
 
         if ($this->model->emailExiste($d['email'], $id)) {
             $this->error('Este e-mail já está em uso.');
-            $this->redirect($id ? APP_URL . "/admin/usuarios/{$id}" : APP_URL . '/admin/usuarios/novo');
+            $this->redirect($redirBase);
         }
 
         if ($id) {
             if ($senha) $d['senha'] = $senha;
             $this->model->atualizar($id, $d);
+            logAction('usuario.salvar', "ID: {$id}");
             $this->success('Usuário atualizado!');
             $this->redirect(APP_URL . "/admin/usuarios/{$id}");
         } else {
-            if (empty($senha)) {
-                $this->error('Informe uma senha.');
-                $this->redirect(APP_URL . '/admin/usuarios/novo');
-            }
             $d['senha'] = $senha;
             $newId = $this->model->criar($d);
+            logAction('usuario.salvar', "ID: {$newId}");
             $this->success('Usuário criado!');
             $this->redirect(APP_URL . "/admin/usuarios/{$newId}");
         }
-
-        logAction('usuario.salvar', "ID: " . ($id ?: 'novo'));
     }
 
     public function deletar(array $params = []): void

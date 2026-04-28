@@ -16,18 +16,41 @@ class PerfilController extends BaseController
             $this->csrfVerify();
 
             $d = [
-                'nome'            => sanitize($this->post('nome')),
-                'email'           => sanitize($this->post('email')),
-                'telefone'        => sanitize($this->post('telefone')),
-                'cep'             => sanitize($this->post('cep')),
+                'nome'            => sanitizeName($this->post('nome')),
+                'email'           => sanitizeEmail($this->post('email')),
+                'telefone'        => sanitizeNumeric($this->post('telefone')),
+                'cep'             => sanitizeNumeric($this->post('cep')),
                 'logradouro'      => sanitize($this->post('logradouro')),
                 'numero'          => sanitize($this->post('numero')),
                 'complemento'     => sanitize($this->post('complemento')),
                 'bairro'          => sanitize($this->post('bairro')),
                 'cidade'          => sanitize($this->post('cidade')),
-                'estado'          => sanitize($this->post('estado')),
+                'estado'          => strtoupper(sanitize($this->post('estado'))),
                 'especialidade'   => sanitize($this->post('especialidade')),
             ];
+
+            $erros = [];
+
+            if (empty($d['nome']) || strlen($d['nome']) < 3) {
+                $erros[] = 'Nome é obrigatório e deve ter ao menos 3 caracteres.';
+            }
+            if (empty($d['email'])) {
+                $erros[] = 'E-mail inválido.';
+            }
+            if (!empty($d['telefone']) && strlen($d['telefone']) < 10) {
+                $erros[] = 'Telefone deve ter ao menos 10 dígitos.';
+            }
+            if (!empty($d['cep']) && strlen($d['cep']) !== 8) {
+                $erros[] = 'CEP deve ter 8 dígitos.';
+            }
+            if (!empty($d['estado']) && strlen($d['estado']) !== 2) {
+                $erros[] = 'UF deve ter 2 letras.';
+            }
+
+            if (!empty($erros)) {
+                $this->error(implode(' | ', $erros));
+                $this->redirect(APP_URL . '/aluno/perfil');
+            }
 
             $senha = $this->post('senha');
             if ($senha) {

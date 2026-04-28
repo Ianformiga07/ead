@@ -57,36 +57,91 @@ class AlunoController extends BaseController
         $id = (int)($params['id'] ?? 0);
 
         $d = [
-            'nome'            => sanitize($this->post('nome')),
-            'email'           => sanitize($this->post('email')),
-            'cpf'             => sanitize($this->post('cpf')),
-            'telefone'        => sanitize($this->post('telefone')),
+            'nome'            => sanitizeName($this->post('nome')),
+            'email'           => sanitizeEmail($this->post('email')),
+            'cpf'             => sanitizeNumeric($this->post('cpf')),
+            'telefone'        => sanitizeNumeric($this->post('telefone')),
             'crmv'            => sanitize($this->post('crmv')),
             'data_nascimento' => $this->post('data_nascimento') ?: null,
             'sexo'            => $this->post('sexo') ?: null,
             'especialidade'   => sanitize($this->post('especialidade')),
-            'cep'             => sanitize($this->post('cep')),
+            'cep'             => sanitizeNumeric($this->post('cep')),
             'logradouro'      => sanitize($this->post('logradouro')),
             'numero'          => sanitize($this->post('numero')),
             'complemento'     => sanitize($this->post('complemento')),
             'bairro'          => sanitize($this->post('bairro')),
             'cidade'          => sanitize($this->post('cidade')),
-            'estado'          => sanitize($this->post('estado')),
+            'estado'          => strtoupper(sanitize($this->post('estado'))),
             'status'          => $this->intPost('status', 1),
             'perfil'          => 'aluno',
         ];
 
         $senha = $this->post('senha');
+        $redirBase = $id ? APP_URL . "/admin/alunos/{$id}" : APP_URL . '/admin/alunos/novo';
 
-        // Validações
-        if (empty($d['nome']) || empty($d['email'])) {
-            $this->error('Nome e e-mail são obrigatórios.');
-            $this->redirect($id ? APP_URL . "/admin/alunos/{$id}" : APP_URL . '/admin/alunos/novo');
+        // ── Validações ────────────────────────────────────────
+        $erros = [];
+
+        if (empty($d['nome']) || strlen($d['nome']) < 3) {
+            $erros[] = 'Nome é obrigatório e deve ter ao menos 3 caracteres.';
+        }
+
+        if (empty($d['email'])) {
+            $erros[] = 'E-mail inválido ou obrigatório.';
+        }
+
+        if (!empty($d['cpf']) && strlen($d['cpf']) !== 11) {
+            $erros[] = 'CPF deve conter 11 dígitos.';
+        }
+
+        if (!empty($d['telefone']) && strlen($d['telefone']) < 10) {
+            $erros[] = 'Telefone deve ter ao menos 10 dígitos.';
+        }
+
+        if (!empty($d['cep']) && strlen($d['cep']) !== 8) {
+            $erros[] = 'CEP deve conter 8 dígitos.';
+        }
+
+        if (!empty($d['estado']) && strlen($d['estado']) !== 2) {
+            $erros[] = 'UF deve ter 2 letras (ex: TO).';
+        }
+
+        if (!empty($d['data_nascimento'])) {
+            $dt = \DateTime::createFromFormat('Y-m-d', $d['data_nascimento']);
+            if (!$dt || $dt > new \DateTime()) {
+                $erros[] = 'Data de nascimento inválida.';
+            }
+        }
+
+        if (!in_array($d['sexo'], ['M', 'F', null, ''], true)) {
+            $erros[] = 'Sexo inválido.';
+        }
+
+        if (!in_array((int)$d['status'], [0, 1], true)) {
+            $erros[] = 'Status inválido.';
+        }
+
+        if (!$id && empty($senha)) {
+            $erros[] = 'Informe uma senha para o novo aluno.';
+        }
+
+        if (!empty($senha) && strlen($senha) < 6) {
+            $erros[] = 'A senha deve ter ao menos 6 caracteres.';
+        }
+
+        if (!empty($erros)) {
+            $this->error(implode(' | ', $erros));
+            $this->redirect($redirBase);
         }
 
         if ($this->model->emailExiste($d['email'], $id)) {
             $this->error('Este e-mail já está cadastrado.');
-            $this->redirect($id ? APP_URL . "/admin/alunos/{$id}" : APP_URL . '/admin/alunos/novo');
+            $this->redirect($redirBase);
+        }
+
+        if (!empty($d['cpf']) && $this->model->cpfExiste($d['cpf'], $id)) {
+            $this->error('Este CPF já está cadastrado.');
+            $this->redirect($redirBase);
         }
 
         if ($id) {
@@ -96,10 +151,6 @@ class AlunoController extends BaseController
             $this->success('Aluno atualizado com sucesso!');
             $this->redirect(APP_URL . "/admin/alunos/{$id}");
         } else {
-            if (empty($senha)) {
-                $this->error('Informe uma senha para o novo aluno.');
-                $this->redirect(APP_URL . '/admin/alunos/novo');
-            }
             $d['senha'] = $senha;
             $newId = $this->model->criar($d);
             logAction('aluno.criar', "Aluno ID {$newId}");

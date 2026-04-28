@@ -64,6 +64,32 @@ function sanitize(string $str): string {
 }
 
 /**
+ * Sanitiza e valida e-mail.
+ * Retorna string vazia se inválido.
+ */
+function sanitizeEmail(string $email): string {
+    $email = trim(strip_tags($email));
+    return filter_var($email, FILTER_VALIDATE_EMAIL) ? $email : '';
+}
+
+/**
+ * Remove tudo que não for dígito (para CPF, telefone, CEP).
+ */
+function sanitizeNumeric(string $str): string {
+    return preg_replace('/\D/', '', $str);
+}
+
+/**
+ * Permite apenas letras, números, espaço e alguns caracteres seguros.
+ * Útil para nomes próprios.
+ */
+function sanitizeName(string $str): string {
+    $str = strip_tags(trim($str));
+    // Remove caracteres de controle e nulos
+    return preg_replace('/[\x00-\x1F\x7F<>"\']/', '', $str);
+}
+
+/**
  * Sanitiza HTML rico (vindo do CKEditor).
  * Permite tags seguras de formatação; remove scripts, iframes, etc.
  */

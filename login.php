@@ -26,10 +26,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $usuario = $model->findByEmail($email);
         if ($usuario && password_verify($senha, $usuario['senha'])) {
             session_regenerate_id(true);
-            $_SESSION['usuario_id'] = $usuario['id'];
-            $_SESSION['nome']       = $usuario['nome'];
-            $_SESSION['perfil']     = $usuario['perfil'];
-            $_SESSION['email']      = $usuario['email'];
+            $_SESSION['usuario_id']        = $usuario['id'];
+            $_SESSION['nome']              = $usuario['nome'];
+            $_SESSION['perfil']            = $usuario['perfil'];
+            $_SESSION['email']             = $usuario['email'];
+            $_SESSION['_ultima_atividade'] = time();
             logAction('login', "Login: {$usuario['email']}");
 
             // admin e operador vão para o painel admin
@@ -192,6 +193,13 @@ body {
     <div class="alert alert-danger d-flex align-items-center gap-2 mb-3">
       <i class="bi bi-exclamation-triangle-fill flex-shrink-0"></i>
       <span><?= e($erro) ?></span>
+    </div>
+    <?php endif; ?>
+
+    <?php if (!empty($_GET['timeout'])): ?>
+    <div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
+      <i class="bi bi-clock-history flex-shrink-0"></i>
+      <span>Sua sessão expirou por inatividade. Por favor, faça login novamente.</span>
     </div>
     <?php endif; ?>
 
