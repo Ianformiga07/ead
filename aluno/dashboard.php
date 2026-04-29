@@ -157,21 +157,54 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
   </div>
 </div>
 
-<!-- Título da seção de cursos -->
-<div class="d-flex align-items-center justify-content-between mb-3">
-  <h5 class="mb-0" style="color:#1a2035;font-weight:700">
-    <i class="bi bi-collection-play me-2 text-primary"></i>Meus Cursos
-  </h5>
-  <?php if ($cursos): ?>
-  <small class="text-muted"><?= count($cursos) ?> curso(s) matriculado(s)</small>
-  <?php endif; ?>
+<!-- Título + Busca -->
+<div class="card border-0 shadow-sm mb-4" style="border-radius:14px">
+  <div class="card-body p-3">
+    <div class="d-flex flex-wrap align-items-center gap-3">
+      <div class="flex-grow-1">
+        <h5 class="mb-0" style="color:#1a2035;font-weight:700">
+          <i class="bi bi-collection-play me-2 text-primary"></i>Meus Cursos
+          <?php if ($cursos): ?>
+          <span class="badge bg-primary ms-2" style="font-size:12px;font-weight:600"><?= count($cursos) ?></span>
+          <?php endif; ?>
+        </h5>
+      </div>
+      <?php if ($cursos): ?>
+      <div class="d-flex gap-2 flex-wrap">
+        <!-- Busca -->
+        <div class="input-group" style="max-width:280px">
+          <span class="input-group-text bg-white border-end-0" style="border-color:#dde6f0">
+            <i class="bi bi-search text-muted" style="font-size:14px"></i>
+          </span>
+          <input type="text" id="buscaCurso" class="form-control border-start-0 ps-0"
+                 placeholder="Buscar curso..." style="font-size:13px;border-color:#dde6f0"
+                 oninput="filtrarCursos()">
+        </div>
+        <!-- Filtro status -->
+        <select id="filtroCurso" class="form-select" style="max-width:150px;font-size:13px;border-color:#dde6f0" onchange="filtrarCursos()">
+          <option value="">Todos</option>
+          <option value="ativa">Em andamento</option>
+          <option value="concluida">Concluídos</option>
+        </select>
+      </div>
+      <?php endif; ?>
+    </div>
+  </div>
+</div>
+
+<!-- Mensagem sem resultados -->
+<div id="semResultados" class="text-center py-4 d-none">
+  <i class="bi bi-search" style="font-size:40px;color:#cbd5e1;display:block;margin-bottom:12px"></i>
+  <p class="text-muted mb-0">Nenhum curso encontrado para a busca.</p>
 </div>
 
 <!-- Grid de cursos -->
 <?php if ($cursos): ?>
-<div class="row g-4">
+<div class="row g-4" id="gridCursos">
   <?php foreach ($cursos as $c): ?>
-  <div class="col-md-6 col-xl-4">
+  <div class="col-md-6 col-xl-4 curso-item"
+       data-nome="<?= htmlspecialchars(strtolower($c['nome']), ENT_QUOTES) ?>"
+       data-status="<?= $c['status_matricula'] ?>">
     <div class="curso-card">
       <!-- Thumbnail -->
       <div class="curso-card-thumb">
@@ -247,4 +280,26 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
 </div>
 <?php endif; ?>
 
+<script>
+function filtrarCursos() {
+    var busca = document.getElementById('buscaCurso')?.value.toLowerCase() ?? '';
+    var filtro = document.getElementById('filtroCurso')?.value ?? '';
+    var cards = document.querySelectorAll('#gridCursos .curso-item');
+    var visiveis = 0;
+    cards.forEach(function(card) {
+        var nome = (card.dataset.nome || '').toLowerCase();
+        var status = card.dataset.status || '';
+        var matchBusca = busca === '' || nome.includes(busca);
+        var matchFiltro = filtro === '' || status === filtro;
+        if (matchBusca && matchFiltro) {
+            card.style.display = '';
+            visiveis++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+    var semRes = document.getElementById('semResultados');
+    if (semRes) semRes.classList.toggle('d-none', visiveis > 0);
+}
+</script>
 <?php include __DIR__ . '/../app/views/layouts/aluno_footer.php'; ?>

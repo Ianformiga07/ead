@@ -87,6 +87,12 @@
         <i class="bi bi-award-fill"></i> Certificados
       </a></li>
 
+      <li class="nav-label">Relatórios</li>
+      <li><a href="<?= APP_URL ?>/admin/relatorios.php"
+             class="<?= str_contains($_SERVER['PHP_SELF'], 'relatorios') ? 'active' : '' ?>">
+        <i class="bi bi-bar-chart-fill"></i> Relatórios
+      </a></li>
+
       <?php if ($__me['perfil'] === 'admin'): ?>
       <li class="nav-label">Sistema</li>
       <li><a href="<?= APP_URL ?>/admin/logs.php"

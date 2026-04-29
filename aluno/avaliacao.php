@@ -330,11 +330,50 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
         <a href="<?= APP_URL ?>/aluno/curso.php?id=<?= $cursoId ?>" class="btn btn-outline-secondary">
           <i class="bi bi-x me-1"></i>Cancelar
         </a>
-        <button type="submit" class="btn btn-primary px-5" id="btnEnviar">
-          <i class="bi bi-send me-2"></i><?= $isQuestionario ? 'Enviar Questionário' : 'Enviar Respostas' ?>
+        <button type="button" class="btn btn-primary px-5" id="btnRevisar" onclick="abrirRevisao()">
+          <i class="bi bi-eye me-2"></i><?= $isQuestionario ? 'Revisar e Enviar' : 'Revisar e Enviar' ?>
         </button>
       </div>
     </form>
+
+<!-- ══ MODAL DE REVISÃO E CONFIRMAÇÃO ══════════════════════════════════ -->
+<div class="modal fade" id="modalRevisao" tabindex="-1" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg">
+    <div class="modal-content" style="border-radius:16px;border:0;overflow:hidden">
+
+      <div class="modal-header" style="background:linear-gradient(135deg,#003d7c,#0066cc);border:0;padding:20px 24px">
+        <div>
+          <h5 class="modal-title text-white fw-bold mb-0">
+            <i class="bi bi-eye me-2"></i>Revisão das Respostas
+          </h5>
+          <small class="text-white-50">Confira suas respostas antes de enviar</small>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body p-4" id="corpoRevisao">
+        <!-- preenchido via JS -->
+      </div>
+
+      <div class="modal-footer border-0" style="background:#f8fafc;padding:16px 24px">
+        <div class="d-flex justify-content-between align-items-center w-100 flex-wrap gap-2">
+          <div id="avisoIncompleto" class="text-danger fw-semibold d-none">
+            <i class="bi bi-exclamation-triangle me-1"></i>Há questões sem resposta!
+          </div>
+          <div class="d-flex gap-2 ms-auto">
+            <button class="btn btn-outline-secondary" data-bs-dismiss="modal">
+              <i class="bi bi-pencil me-1"></i>Corrigir Respostas
+            </button>
+            <button class="btn btn-success px-4 fw-bold" id="btnConfirmarEnvio" onclick="confirmarEnvio()">
+              <i class="bi bi-send me-2"></i>Confirmar e Enviar
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
   </div>
 </div>
 <?php endif; ?>
@@ -345,10 +384,30 @@ include __DIR__ . '/../app/views/layouts/aluno_header.php';
 .likert-opt:hover { background: #f0f9ff; border-color: #3b82f6 !important; }
 .likert-opt.likert-selected { background: #eff6ff; border-color: #2563eb !important; }
 .likert-opt.likert-selected .likert-num { color: #2563eb; }
+/* Revisão */
+.revisao-item { border-radius:10px; padding:14px 16px; background:#f8fafc; border:1px solid #e2e8f0; margin-bottom:10px; }
+.revisao-item.ok    { border-left:4px solid #10b981; }
+.revisao-item.vazio { border-left:4px solid #ef4444; background:#fff5f5; }
+.revisao-resposta   { color:#003d7c; font-weight:600; font-size:13px; margin-top:4px; }
+.revisao-sem        { color:#ef4444; font-size:13px; margin-top:4px; }
 </style>
 
 <script>
-/* ── Questionário Likert ─────────────────────────────────── */
+/* ── Dados das perguntas (PHP → JS) ──────────────────────────────── */
+const isQuestionario = <?= $isQuestionario ? 'true' : 'false' ?>;
+
+<?php if ($isQuestionario): ?>
+const perguntas = <?= json_encode(array_map(fn($p) => ['id' => $p['id'], 'enunciado' => $p['enunciado']], $perguntas)) ?>;
+<?php else: ?>
+const perguntas = <?= json_encode(array_map(fn($p) => [
+    'id'          => $p['id'],
+    'enunciado'   => $p['enunciado'],
+    'pontos'      => $p['pontos'],
+    'alternativas'=> array_map(fn($a) => ['id' => $a['id'], 'texto' => $a['texto']], $p['alternativas'])
+], $perguntas)) ?>;
+<?php endif; ?>
+
+/* ── Questionário Likert ─────────────────────────────── */
 document.querySelectorAll('.likert-radio').forEach(function(radio) {
     radio.addEventListener('change', function() {
         var group = this.dataset.group;
@@ -366,29 +425,91 @@ function selectOpt(el, group) {
     document.getElementById('inp_' + group).value = el.dataset.value;
 }
 
-/* ── Validação e spinner no submit ───────────────────────── */
-document.getElementById('formAvaliacao')?.addEventListener('submit', function(e) {
-    // Prova: verifica hidden inputs
-    const hiddens = this.querySelectorAll('input[type="hidden"][id^="inp_"]');
-    if (hiddens.length > 0) {
-        let ok = true;
-        hiddens.forEach(inp => { if (!inp.value) ok = false; });
-        if (!ok) { e.preventDefault(); alert('Por favor, responda todas as questões antes de enviar.'); return; }
+/* ── Coleta respostas ────────────────────────────────────── */
+function coletarRespostas() {
+    const respostas = {};
+    if (isQuestionario) {
+        document.querySelectorAll('.likert-radio:checked').forEach(r => {
+            const gid = r.name.replace('resp_', '');
+            respostas[gid] = { valor: r.value, texto: r.closest('.likert-opt')?.querySelector('div:last-child')?.textContent?.trim() };
+        });
+    } else {
+        perguntas.forEach(p => {
+            const inp = document.getElementById('inp_' + p.id);
+            if (inp && inp.value) {
+                const alt = p.alternativas.find(a => String(a.id) === String(inp.value));
+                respostas[p.id] = { altId: inp.value, texto: alt ? alt.texto : '' };
+            }
+        });
     }
-    // Questionário: verifica radios
-    const grupos = new Set();
-    this.querySelectorAll('.likert-radio').forEach(r => grupos.add(r.name));
-    for (const nome of grupos) {
-        if (!this.querySelector('input[name="' + nome + '"]:checked')) {
-            e.preventDefault();
-            alert('Por favor, responda todas as questões antes de enviar.');
-            return;
-        }
+    return respostas;
+}
+
+/* ── Abre modal de revisão ─────────────────────────────── */
+function abrirRevisao() {
+    const respostas = coletarRespostas();
+    let html = '';
+    let temVazio = false;
+
+    if (isQuestionario) {
+        const labels = { '1':'Ruim','2':'Regular','3':'Bom','4':'Muito bom','5':'Excelente' };
+        perguntas.forEach((p, idx) => {
+            const resp = respostas[p.id];
+            const ok = !!resp;
+            if (!ok) temVazio = true;
+            html += `<div class="revisao-item ${ok ? 'ok' : 'vazio'}">
+                <div style="font-size:13px;color:#64748b">Questão ${idx+1}</div>
+                <div style="font-size:14px;font-weight:600;color:#1a2035">${escHtml(p.enunciado)}</div>
+                ${ok
+                    ? `<div class="revisao-resposta"><i class="bi bi-check-circle me-1 text-success"></i>${resp.valor} — ${labels[resp.valor] ?? ''}</div>`
+                    : `<div class="revisao-sem"><i class="bi bi-exclamation-circle me-1"></i>Não respondida</div>`}
+            </div>`;
+        });
+    } else {
+        perguntas.forEach((p, idx) => {
+            const resp = respostas[p.id];
+            const ok = !!resp;
+            if (!ok) temVazio = true;
+            html += `<div class="revisao-item ${ok ? 'ok' : 'vazio'}">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div style="font-size:13px;color:#64748b">Questão ${idx+1}</div>
+                  <span style="font-size:11px;color:#8898aa">${p.pontos} pt</span>
+                </div>
+                <div style="font-size:14px;font-weight:600;color:#1a2035">${escHtml(p.enunciado)}</div>
+                ${ok
+                    ? `<div class="revisao-resposta"><i class="bi bi-check-circle me-1 text-success"></i>${escHtml(resp.texto)}</div>`
+                    : `<div class="revisao-sem"><i class="bi bi-exclamation-circle me-1"></i>Não respondida</div>`}
+            </div>`;
+        });
     }
-    const btn = document.getElementById('btnEnviar');
+
+    document.getElementById('corpoRevisao').innerHTML =
+        `<div class="alert alert-info py-2 px-3 mb-3" style="font-size:13px">
+            <i class="bi bi-info-circle me-2"></i>Revise todas as respostas. Após enviar, não será possível alterar.
+         </div>` + html;
+
+    const aviso = document.getElementById('avisoIncompleto');
+    const btnConf = document.getElementById('btnConfirmarEnvio');
+    aviso.classList.toggle('d-none', !temVazio);
+    btnConf.disabled = temVazio;
+    if (temVazio) {
+        btnConf.title = 'Responda todas as questões antes de enviar';
+    }
+
+    new bootstrap.Modal(document.getElementById('modalRevisao')).show();
+}
+
+/* ── Confirma e envia ──────────────────────────────────── */
+function confirmarEnvio() {
+    const btn = document.getElementById('btnConfirmarEnvio');
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Enviando...';
-});
+    document.getElementById('formAvaliacao').submit();
+}
+
+function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 </script>
 
 <?php include __DIR__ . '/../app/views/layouts/aluno_footer.php'; ?>
